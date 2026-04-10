@@ -63,9 +63,7 @@ export default function WorkspaceSettingsPage() {
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">팀 로고</label>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-accent-foreground text-lg font-bold">
-              W
-            </div>
+            <img src="/brand/workb-logo.png" alt="Workb 팀 로고" className="w-12 h-12 rounded-xl object-cover" />
             <button
               type="button"
               onClick={() => console.log('TODO: upload logo')}

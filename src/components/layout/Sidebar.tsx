@@ -123,16 +123,20 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
       )}>
         {!collapsed && (
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex items-center justify-center w-6 h-6 rounded bg-accent text-accent-foreground text-mini font-bold shrink-0">
-              W
-            </span>
+            <img
+              src="/brand/workb-logo.png"
+              alt="Workb 로고"
+              className="w-6 h-6 rounded object-cover shrink-0"
+            />
             <span className="text-sm font-medium truncate text-sidebar-foreground">Workb 팀</span>
           </div>
         )}
         {collapsed && (
-          <span className="flex items-center justify-center w-6 h-6 rounded bg-accent text-accent-foreground text-mini font-bold">
-            W
-          </span>
+          <img
+            src="/brand/workb-logo.png"
+            alt="Workb 로고"
+            className="w-6 h-6 rounded object-cover"
+          />
         )}
         {!collapsed && (
           <button
