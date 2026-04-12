@@ -121,7 +121,10 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 
   return (
     <div
-      onClick={() => navigate(`/meetings/${meeting.id}`)} // TODO: implement meeting detail
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(`/meetings/${meeting.id}/notes`)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meetings/${meeting.id}/notes`) } }}
       className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 md:gap-4 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
     >
       {/* Title + tags */}
