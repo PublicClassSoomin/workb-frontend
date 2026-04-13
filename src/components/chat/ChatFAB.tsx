@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import WorkbAssistantAvatar from './WorkbAssistantAvatar'
 import { GLOBAL_CHAT_MESSAGES } from '../../data/mockChatMessages'
 import type { ChatMessage } from '../../types/chat'
+import { useLocation } from 'react-router-dom'
 
 export default function ChatFAB() {
   const [open, setOpen] = useState(false)
@@ -11,6 +12,10 @@ export default function ChatFAB() {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const location = useLocation()
+  const match = location.pathname.match(/\/meetings\/live\/([^/]+)/)
+  const meetingId = match ? match[1] : null
 
   // Close on Escape
   useEffect(() => {
