@@ -15,7 +15,10 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
 
   return (
     <article
-      onClick={() => navigate(`/meetings/${meeting.id}`)} // TODO: implement meeting detail page
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(`/meetings/${meeting.id}/notes`)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meetings/${meeting.id}/notes`) } }}
       className={clsx(
         'group flex flex-col gap-2.5 p-3.5 rounded-lg border bg-card cursor-pointer',
         'hover:shadow-card-hover hover:border-accent/25 transition-all duration-quick',
