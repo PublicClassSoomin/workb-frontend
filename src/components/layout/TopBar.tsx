@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Sun, Moon, Bell, Monitor, Menu } from 'lucide-react'
 import clsx from 'clsx'
 import type { ThemePreference } from '../../hooks/useThemePreference'
@@ -23,7 +24,20 @@ export default function TopBar({
   onCycleTheme,
   onMenuOpen,
 }: TopBarProps) {
+  const navigate = useNavigate()
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const q = searchQuery.trim()
+    if (q) {
+      navigate(`/history?keyword=${encodeURIComponent(q)}`)
+    } else {
+      navigate('/history')
+    }
+  }
 
   return (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-11 border-b border-border bg-background shrink-0">
@@ -48,10 +62,12 @@ export default function TopBar({
         <input
           type="search"
           placeholder="회의 검색..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setSearchFocused(false)}
           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
-          // TODO: implement real search handler
         />
         {!searchFocused && (
           <kbd className="hidden sm:flex items-center gap-0.5 text-micro text-muted-foreground">
@@ -67,11 +83,12 @@ export default function TopBar({
       <div className="flex items-center gap-1">
         {/* New meeting button */}
         <button
+          type="button"
           className={clsx(
             'flex items-center gap-1.5 h-7 px-3 rounded text-sm font-medium transition-colors',
             'bg-accent text-accent-foreground hover:opacity-90',
           )}
-          // TODO: open create-meeting modal
+          onClick={() => navigate('/meetings/new')}
         >
           <Plus size={13} />
           <span className="hidden sm:inline">새 회의</span>
