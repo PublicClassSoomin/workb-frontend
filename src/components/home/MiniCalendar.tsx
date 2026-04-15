@@ -1,23 +1,21 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import clsx from 'clsx'
-import { MEETINGS } from '../../data/mockData'
+import type { Meeting } from '../../types/meeting'
 
-function getMeetingDates(): Set<string> {
+function getMeetingDates(meetings: Meeting[]): Set<string> {
   const s = new Set<string>()
-  MEETINGS.forEach((m) => {
-    s.add(new Date(m.startAt).toDateString())
-  })
+  meetings.forEach((m) => s.add(new Date(m.startAt).toDateString()))
   return s
 }
 
-export default function MiniCalendar() {
+export default function MiniCalendar({ meetings = [] }: { meetings?: Meeting[] }) {
   const today = new Date()
   const [viewYear, setViewYear] = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth()) // 0-indexed
   const [selected, setSelected] = useState<Date | null>(null)
 
-  const meetingDates = getMeetingDates()
+  const meetingDates = useMemo(() => getMeetingDates(meetings), [meetings])
 
   // First day of month, number of days
   const firstDay = new Date(viewYear, viewMonth, 1).getDay() // 0=Sun
@@ -41,7 +39,7 @@ export default function MiniCalendar() {
 
   // Meetings on selected day (or today if nothing selected)
   const targetDate = selected ?? today
-  const dayMeetings = MEETINGS.filter((m) => {
+  const dayMeetings = meetings.filter((m) => {
     const d = new Date(m.startAt)
     return (
       d.getFullYear() === targetDate.getFullYear() &&

@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Sparkles, Calendar } from 'lucide-react'
 import MeetingCard from '../components/home/MeetingCard'
 import WeeklyStatsCard from '../components/home/WeeklyStats'
 import MiniCalendar from '../components/home/MiniCalendar'
-import { MEETINGS, WEEKLY_STATS } from '../data/mockData'
 import type { MeetingStatus } from '../types/meeting'
+import type { Meeting, WeeklyStats } from '../types/meeting'
+import { fetchWorkspaceDashboard } from '../api/dashboard'
 
 type Tab = MeetingStatus
 
@@ -17,8 +18,32 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<Tab>('inprogress')
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtered = MEETINGS.filter((m) => m.status === activeTab)
+  useEffect(() => {
+    let mounted = true
+    fetchWorkspaceDashboard(1)
+      .then(({ meetings, weeklyStats }) => {
+        if (!mounted) return
+        setMeetings(meetings)
+        setWeeklyStats(weeklyStats)
+        setError(null)
+      })
+      .catch((e) => {
+        if (!mounted) return
+        setError(e instanceof Error ? e.message : String(e))
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const filtered = useMemo(
+    () => meetings.filter((m) => m.status === activeTab),
+    [meetings, activeTab],
+  )
 
   return (
     <div className="flex h-full">
@@ -49,7 +74,7 @@ export default function HomePage() {
             className="flex items-center gap-0.5 mb-4 border-b border-border"
           >
             {TABS.map((tab) => {
-              const count = MEETINGS.filter((m) => m.status === tab.id).length
+              const count = meetings.filter((m) => m.status === tab.id).length
               return (
                 <button
                   key={tab.id}
@@ -82,6 +107,11 @@ export default function HomePage() {
             role="tabpanel"
             aria-label={`${TABS.find((t) => t.id === activeTab)?.label} 회의 목록`}
           >
+            {error && (
+              <div className="mb-3 p-3 rounded border border-red-500/20 bg-red-500/5 text-sm text-red-600">
+                {error}
+              </div>
+            )}
             {filtered.length === 0 ? (
               <EmptyState status={activeTab} />
             ) : (
@@ -100,13 +130,13 @@ export default function HomePage() {
         <div className="sticky top-0 px-4 py-4 flex flex-col gap-4">
 
           {/* Next meeting callout */}
-          <NextMeetingBanner />
+          <NextMeetingBanner meetings={meetings} />
 
           {/* Weekly stats */}
-          <WeeklyStatsCard stats={WEEKLY_STATS} />
+          {weeklyStats && <WeeklyStatsCard stats={weeklyStats} />}
 
           {/* Calendar */}
-          <MiniCalendar />
+          <MiniCalendar meetings={meetings} />
         </div>
       </aside>
     </div>
@@ -129,8 +159,8 @@ function EmptyState({ status }: { status: Tab }) {
   )
 }
 
-function NextMeetingBanner() {
-  const next = MEETINGS.find((m) => m.status === 'upcoming')
+function NextMeetingBanner({ meetings }: { meetings: Meeting[] }) {
+  const next = meetings.find((m) => m.status === 'upcoming')
   if (!next) return null
 
   const diffMs = new Date(next.startAt).getTime() - Date.now()
