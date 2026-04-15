@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, Users, Clock, Tag } from 'lucide-react'
+import { Users, Tag } from 'lucide-react'
 import { PARTICIPANTS } from '../../data/mockData'
+import DatePicker from '../../components/ui/DatePicker'
+import TimePicker from '../../components/ui/TimePicker'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
@@ -35,10 +37,10 @@ export default function NewMeetingPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Title */}
+        {/* 회의 제목 */}
         <div>
           <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
-            <Tag size={14} /> 회의 제목 <span className="text-red-500">*</span>
+            <Tag size={14} aria-hidden="true" /> 회의 제목 <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -50,33 +52,33 @@ export default function NewMeetingPage() {
           />
         </div>
 
-        {/* Date & Time */}
+        {/* 날짜 & 시간 */}
         <div className="grid grid-cols-2 gap-3">
+          {/* DatePicker — 커스텀 달력 */}
           <div>
             <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
-              <Calendar size={14} /> 날짜
+              날짜
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+              onChange={setDate}
+              placeholder="날짜 선택"
             />
           </div>
+
           <div>
             <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
-              <Clock size={14} /> 시간
+              시간
             </label>
-            <input
-              type="time"
+            <TimePicker
               value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+              onChange={setTime}
+              placeholder="시간 선택"
             />
           </div>
         </div>
 
-        {/* Duration */}
+        {/* 예상 소요 시간 */}
         <div>
           <label className="text-sm font-medium text-foreground mb-1.5 block">예상 소요 시간</label>
           <div className="flex gap-2 flex-wrap">
@@ -85,7 +87,11 @@ export default function NewMeetingPage() {
                 key={min}
                 type="button"
                 onClick={() => setDuration(min)}
-                className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${duration === min ? 'border-accent bg-accent-subtle text-accent' : 'border-border text-muted-foreground hover:border-foreground'}`}
+                className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                  duration === min
+                    ? 'border-accent bg-accent-subtle text-accent'
+                    : 'border-border text-muted-foreground hover:border-foreground'
+                }`}
               >
                 {min}분
               </button>
@@ -93,7 +99,7 @@ export default function NewMeetingPage() {
           </div>
         </div>
 
-        {/* Meeting type */}
+        {/* 회의 유형 */}
         <div>
           <label className="text-sm font-medium text-foreground mb-1.5 block">회의 유형</label>
           <select
@@ -102,14 +108,16 @@ export default function NewMeetingPage() {
             className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
           >
             <option value="">유형 선택 (선택사항)</option>
-            {MEETING_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {MEETING_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
           </select>
         </div>
 
-        {/* Participants */}
+        {/* 참석자 */}
         <div>
           <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
-            <Users size={14} /> 참석자
+            <Users size={14} aria-hidden="true" /> 참석자
           </label>
           <div className="flex flex-wrap gap-2">
             {PARTICIPANTS.map((p) => (
@@ -117,11 +125,17 @@ export default function NewMeetingPage() {
                 key={p.id}
                 type="button"
                 onClick={() => toggleParticipant(p.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${selectedParticipants.includes(p.id) ? 'border-accent bg-accent-subtle text-accent' : 'border-border text-muted-foreground hover:border-foreground'}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                  selectedParticipants.includes(p.id)
+                    ? 'border-accent bg-accent-subtle text-accent'
+                    : 'border-border text-muted-foreground hover:border-foreground'
+                }`}
+                aria-pressed={selectedParticipants.includes(p.id)}
               >
                 <span
                   className="w-4 h-4 rounded-full flex items-center justify-center text-white text-micro"
                   style={{ backgroundColor: p.color }}
+                  aria-hidden="true"
                 >
                   {p.avatarInitials[0]}
                 </span>
@@ -131,7 +145,7 @@ export default function NewMeetingPage() {
           </div>
         </div>
 
-        {/* Google Calendar */}
+        {/* Google Calendar 연동 */}
         <div className="p-3 rounded-lg border border-border bg-muted/20">
           <div className="flex items-center justify-between">
             <div>

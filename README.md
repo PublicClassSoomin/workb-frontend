@@ -41,13 +41,12 @@ npm run build    # 프로덕션 빌드
 |------|-----------|
 | `/` | 홈 대시보드 `[핵심]` |
 | `/history` | 회의 히스토리·검색 |
+| `/calendar` | 전체 캘린더 뷰 |
+| `/support` | 고객지원 |
 | `/meetings/new` | 회의 생성·예약 |
-| `/meetings/:meetingId/agenda` | 아젠다 설정 |
 | `/meetings/context` | 이전 회의 열람·맥락 뷰 `[AI]` |
-| `/live/:meetingId` | 실시간 회의 메인 `[핵심]` |
-| `/live/:meetingId/search` | 즉석 자료 검색 `[AI]` |
-| `/live/:meetingId/screen` | 화면 공유 해석 뷰 `[AI]` |
-| `/live/:meetingId/speakers` | 화자 등록·확인 |
+| `/meetings/:meetingId/agenda` | 아젠다 설정 |
+| `/meetings/:meetingId/upcoming` | 예정 회의(사전) 상세 |
 | `/meetings/:meetingId/notes` | 회의록 상세 `[핵심]` |
 | `/meetings/:meetingId/notes/edit` | 회의록 편집 |
 | `/meetings/:meetingId/wbs` | WBS·태스크 리스트 `[핵심]` |
@@ -58,6 +57,18 @@ npm run build    # 프로덕션 빌드
 | `/settings/voice` | 성문(음성) 수집·화자 등록 `[AI]` |
 | `/settings/integrations` | 연동 관리 `[연동]` |
 | `/settings/device` | 장비 설정 |
+
+### C. 실시간 회의 — FullscreenLayout (사이드바·TopBar 없음)
+
+라이브 구간은 `AppShell` 밖에서 렌더되어 **글로벌 ChatFAB도 표시되지 않음**.
+
+| 경로 | 명세 섹션 |
+|------|-----------|
+| `/live` | 실시간 회의 메인(목업 기본 회의) `[핵심]` |
+| `/live/:meetingId` | 실시간 회의 메인 `[핵심]` |
+| `/live/:meetingId/search` | 즉석 자료 검색 `[AI]` |
+| `/live/:meetingId/screen` | 화면 공유 해석 뷰 `[AI]` |
+| `/live/:meetingId/speakers` | 화자 등록·확인 |
 
 > **참고**: `/live/:meetingId/chat` 는 FAB 채팅 패널과 중복이므로 라우트 생략. 라이브 페이지 내 AI 챗 탭으로 대체.
 
@@ -83,7 +94,7 @@ npm run build    # 프로덕션 빌드
 - **패널**: 클릭 시 슬라이드업 채팅 패널 (너비 `w-96`)
 - **키보드**: `Escape` 키로 패널 닫기
 - **기능 칩**: "현재 회의 요약", "액션 아이템 조회", "다음 회의 일정", "자료 검색"
-- **노출 범위**: `/login`, `/signup/*`, `/onboarding/*` 등 인증 전용 라우트에서 **숨김**, AppShell 이하 모든 경로에서 **표시**
+- **노출 범위**: `/login`, `/signup/*`, `/onboarding/*` 등 인증 전용 라우트와 **`FullscreenLayout` 하위(`/live*`)** 에서는 **숨김**. `AppShell` 이하 경로에서만 **표시**
 
 ---
 
@@ -94,8 +105,9 @@ src/
 ├── components/
 │   ├── chat/         WorkbAssistantAvatar, ChatFAB
 │   ├── home/         MeetingCard, WeeklyStats, ActionItemsList
-│   ├── layout/       AppShell, AuthLayout, Sidebar, TopBar
-│   └── ui/           Badge, Avatar
+│   ├── layout/       AppShell, AuthLayout, FullscreenLayout, Sidebar, TopBar,
+│   │                 NotificationsPanel
+│   └── ui/           Badge, Avatar, DatePicker, TimePicker, Tooltip
 ├── data/
 │   ├── mockData.ts
 │   ├── mockTranscript.ts
@@ -107,12 +119,11 @@ src/
 │   ├── auth/         LoginPage, SignupAdminPage, SignupMemberPage, ResetPasswordPage
 │   ├── live/         LivePage, LiveSearchPage, LiveScreenPage, LiveSpeakersPage
 │   ├── meetings/     AgendaPage, ExportPage, MeetingContextPage, NewMeetingPage,
-│   │                 NotesPage, NotesEditPage, ReportsPage, WbsPage
+│   │                 NotesPage, NotesEditPage, ReportsPage, WbsPage, UpcomingMeetingPage
 │   ├── onboarding/   OnboardingWorkspacePage, OnboardingIntegrationsPage, OnboardingInvitePage
 │   ├── settings/     WorkspaceSettingsPage, MembersSettingsPage, VoiceSettingsPage,
 │   │                 IntegrationsSettingsPage, DeviceSettingsPage
-│   ├── HomePage.tsx
-│   └── HistoryPage.tsx
+│   └── HomePage.tsx, HistoryPage.tsx, CalendarPage.tsx, SupportPage.tsx
 ├── types/
 │   ├── meeting.ts    Meeting, ActionItem, Participant, WeeklyStats
 │   ├── transcript.ts Utterance, TranscriptSegment
@@ -144,7 +155,7 @@ Tailwind 기본 브레이크포인트를 그대로 사용 (커스텀 없음):
 ### 모바일 내비게이션 동작
 
 - **`md` 미만**: 사이드바는 숨김(`-translate-x-full`). TopBar 왼쪽 햄버거 버튼을 누르면 오버레이 드로어로 슬라이드인.
-- **`md` 이상**: 사이드바가 레이아웃 흐름에 포함(`md:relative md:translate-x-0`). 접기/펼치기 토글 가능(`w-12` ↔ `w-56`).
+- **`md` 이상**: 사이드바가 레이아웃 흐름에 포함(`md:relative md:translate-x-0`). 접기/펼치기 토글 가능(`md:w-12` ↔ `md:w-56`). 데스크톱에서는 사이드바 **오른쪽 가장자리 세로 중앙**에 이중 꺾쇠 핸들 버튼으로도 토글 가능.
 - 드로어 닫기: 배경 클릭 또는 `Escape` 키.
 
 ### 주요 반응형 패턴

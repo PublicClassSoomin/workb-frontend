@@ -10,15 +10,23 @@ interface MeetingCardProps {
   meeting: Meeting
 }
 
+/** 상태에 따라 이동할 라우트를 결정 */
+function getMeetingRoute(meeting: Meeting): string {
+  if (meeting.status === 'inprogress') return `/live/${meeting.id}`
+  if (meeting.status === 'upcoming') return `/meetings/${meeting.id}/upcoming`
+  return `/meetings/${meeting.id}/notes`
+}
+
 export default function MeetingCard({ meeting }: MeetingCardProps) {
   const navigate = useNavigate()
+  const route = getMeetingRoute(meeting)
 
   return (
     <article
       role="button"
       tabIndex={0}
-      onClick={() => navigate(`/meetings/${meeting.id}/notes`)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meetings/${meeting.id}/notes`) } }}
+      onClick={() => navigate(route)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(route) } }}
       className={clsx(
         'group flex flex-col gap-2.5 p-3.5 rounded-lg border bg-card cursor-pointer',
         'hover:shadow-card-hover hover:border-accent/25 transition-all duration-quick',

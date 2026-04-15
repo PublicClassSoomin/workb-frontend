@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useEffect, useState, useRef, useId } from 'react'
+import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   Home,
   History,
@@ -20,9 +20,162 @@ import {
   Link2,
   Gauge,
   X,
+  CalendarDays,
+  ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
+  Check,
   type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
+import Tooltip from '../ui/Tooltip'
+
+// ── 워크스페이스 목록 (목업) ─────────────────────────────────────────────────
+interface Workspace {
+  id: string
+  name: string
+  initial: string
+  color: string
+}
+
+const WORKSPACES: Workspace[] = [
+  { id: 'ws1', name: 'Workb 팀',    initial: 'W', color: '#6b78f6' },
+  { id: 'ws2', name: '디자인 스쿼드', initial: 'D', color: '#ec4899' },
+  { id: 'ws3', name: '개발팀',       initial: 'G', color: '#22c55e' },
+]
+
+// ── 워크스페이스 셀렉터 서브컴포넌트 ─────────────────────────────────────────
+interface WorkspaceSelectorProps {
+  collapsed: boolean
+}
+
+function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
+  const navigate = useNavigate()
+  const [currentId, setCurrentId] = useState(WORKSPACES[0].id)
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const listId = useId()
+
+  const current = WORKSPACES.find((w) => w.id === currentId) ?? WORKSPACES[0]
+
+  // 외부 클릭·ESC로 닫기, 포커스 복귀
+  useEffect(() => {
+    if (!open) return
+    function handleDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener('mousedown', handleDown)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleDown)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
+  function select(ws: Workspace) {
+    setCurrentId(ws.id)
+    setOpen(false)
+    triggerRef.current?.focus()
+    navigate('/')
+  }
+
+  // 아이콘(아바타)은 collapsed 상태에서도 표시
+  const avatar = (
+    <span
+      className="w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold shrink-0"
+      style={{ backgroundColor: current.color }}
+      aria-hidden="true"
+    >
+      {current.initial}
+    </span>
+  )
+
+  if (collapsed) {
+    return (
+      <Tooltip label={current.name} placement="right" block={false}>
+        <div className="flex justify-center">{avatar}</div>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <div ref={containerRef} className="relative flex-1 min-w-0">
+      {/* 트리거 */}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-label={`현재 워크스페이스: ${current.name}. 클릭해 변경`}
+        className="flex items-center gap-2 w-full rounded px-1 py-0.5 hover:bg-sidebar-hover transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        {avatar}
+        <span className="flex-1 text-sm font-medium truncate text-sidebar-foreground text-left">
+          {current.name}
+        </span>
+        <ChevronDown
+          size={13}
+          className={clsx(
+            'text-muted-foreground shrink-0 transition-transform duration-150',
+            open && 'rotate-180',
+          )}
+          aria-hidden="true"
+        />
+      </button>
+
+      {/* 드롭다운 */}
+      {open && (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="워크스페이스 목록"
+          className="absolute left-0 top-full mt-1 z-50 w-full bg-card border border-border rounded-lg shadow-lg py-1 overflow-hidden"
+        >
+          {WORKSPACES.map((ws) => {
+            const isSelected = ws.id === currentId
+            return (
+              <li key={ws.id} role="option" aria-selected={isSelected}>
+                <button
+                  type="button"
+                  onClick={() => select(ws)}
+                  className={clsx(
+                    'flex items-center gap-2 w-full px-2.5 py-1.5 text-sm transition-colors',
+                    isSelected
+                      ? 'bg-sidebar-active text-accent'
+                      : 'text-foreground hover:bg-muted',
+                  )}
+                >
+                  <span
+                    className="w-5 h-5 rounded flex items-center justify-center text-white shrink-0"
+                    style={{ backgroundColor: ws.color, fontSize: '10px', fontWeight: 700 }}
+                    aria-hidden="true"
+                  >
+                    {ws.initial}
+                  </span>
+                  <span className="flex-1 truncate text-left">{ws.name}</span>
+                  {isSelected && (
+                    <Check size={13} className="text-accent shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 interface NavItemDef {
   to: string
@@ -42,6 +195,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/', label: '홈 대시보드', icon: Home },
       { to: '/history', label: '회의 히스토리', icon: History },
+      { to: '/calendar', label: '전체 캘린더', icon: CalendarDays },
     ],
   },
   {
@@ -81,7 +235,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose }: SidebarProps) {
-  // Close drawer on Escape key (mobile)
+  // 모바일: ESC로 닫기
   useEffect(() => {
     if (!mobileOpen) return
     const handler = (e: KeyboardEvent) => {
@@ -93,7 +247,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* 모바일 백드롭 */}
       {mobileOpen && (
         <div
           className="md:hidden fixed inset-0 z-40 bg-black/40"
@@ -102,163 +256,239 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
         />
       )}
 
-    <aside
-      aria-label="주 내비게이션 패널"
-      {...(mobileOpen ? { 'aria-modal': true } : {})}
-      className={clsx(
-        'flex flex-col bg-sidebar border-r border-sidebar-border text-sidebar-foreground h-screen',
-        // Mobile: fixed overlay, slide in/out
-        'fixed inset-y-0 left-0 z-50 w-64',
-        'transition-transform duration-200 ease-out',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full',
-        // Desktop (md+): back in flow, use collapsed/expanded widths
-        'md:relative md:z-auto md:translate-x-0 md:shrink-0',
-        collapsed ? 'md:w-12' : 'md:w-56',
-      )}
-    >
-      {/* Header — workspace identity */}
-      <div className={clsx(
-        'flex items-center gap-2 px-2.5 py-2.5 border-b border-sidebar-border shrink-0',
-        collapsed ? 'justify-center' : 'justify-between',
-      )}>
-        {!collapsed && (
-          <div className="flex items-center gap-2 min-w-0">
-            <img
-              src="/brand/workb-logo.png"
-              alt="Workb 로고"
-              className="w-6 h-6 rounded object-cover shrink-0"
-            />
-            <span className="text-sm font-medium truncate text-sidebar-foreground">Workb 팀</span>
-          </div>
+      <aside
+        id="nav_side_menu"
+        aria-label="주 내비게이션 패널"
+        {...(mobileOpen ? { 'aria-modal': true } : {})}
+        className={clsx(
+          'flex flex-col bg-sidebar border-r border-sidebar-border text-sidebar-foreground h-screen',
+          // 모바일: 고정 오버레이
+          'fixed inset-y-0 left-0 z-50 w-64',
+          'transition-[transform,width] duration-200 ease-out',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          // 데스크톱(md+): flow-in, 너비 전환
+          'md:relative md:z-auto md:translate-x-0 md:shrink-0',
+          collapsed ? 'md:w-12' : 'md:w-56',
         )}
-        {collapsed && (
-          <img
-            src="/brand/workb-logo.png"
-            alt="Workb 로고"
-            className="w-6 h-6 rounded object-cover"
-          />
-        )}
-        {!collapsed && (
-          <button
-            onClick={onToggle}
-            className="hidden md:flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors"
-            aria-label="사이드바 접기"
-          >
-            <PanelLeftClose size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Scroll area */}
-      <nav className="flex-1 overflow-y-auto py-2" role="navigation" aria-label="주 내비게이션">
-        {NAV_GROUPS.map((group, groupIdx) => (
-          <div key={group.label} className={groupIdx > 0 ? 'mt-1' : ''}>
-            {/* Group label */}
-            {!collapsed ? (
-              <div className="mx-3 mt-3 mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-micro font-medium text-muted-foreground/60 uppercase tracking-widest">{group.label}</span>
-                  <div className="flex-1 border-t border-sidebar-border" />
-                </div>
-              </div>
-            ) : groupIdx > 0 ? (
-              <div className="mx-2.5 my-2 border-t border-sidebar-border" />
-            ) : null}
-
-            {/* Items */}
-            <div className="px-1.5">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  aria-current={undefined}
-                  className={({ isActive }) =>
-                    clsx(
-                      'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm transition-colors',
-                      'text-sidebar-foreground hover:bg-sidebar-hover cursor-pointer',
-                      collapsed ? 'justify-center' : '',
-                      isActive && 'bg-sidebar-active text-accent font-medium',
-                    )
-                  }
-                  title={collapsed ? item.label : undefined}
-                >
-                  {({ isActive }) => (
-                    <>
-                      <item.icon size={15} className={clsx('shrink-0', isActive ? 'text-accent' : '')} aria-hidden="true" />
-                      {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                      {!collapsed && item.badge && item.badge > 0 && (
-                        <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-foreground text-micro font-medium">
-                          {item.badge}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              ))}
+      >
+        {/* 헤더 — 워크스페이스 셀렉터 */}
+        <div
+          className={clsx(
+            'flex items-center gap-2 px-2.5 py-2.5 border-b border-sidebar-border shrink-0',
+            collapsed ? 'justify-center' : 'justify-between',
+          )}
+        >
+          {/* 로고 (collapsed 시에는 홈 링크 역할) */}
+          {collapsed ? (
+            <Tooltip label="홈으로 이동" placement="right" block={false}>
+              <Link
+                to="/"
+                className="flex items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                aria-label="홈으로 이동"
+              >
+                <img
+                  src="/brand/workb-logo.png"
+                  alt="Workb 로고"
+                  className="w-6 h-6 rounded object-cover shrink-0"
+                />
+              </Link>
+            </Tooltip>
+          ) : (
+            /* 펼쳐진 상태: 로고 + 워크스페이스 셀렉터 */
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Link
+                to="/"
+                className="flex items-center shrink-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                aria-label="홈으로 이동"
+                tabIndex={-1}
+              >
+                <img
+                  src="/brand/workb-logo.png"
+                  alt="Workb 로고"
+                  className="w-6 h-6 rounded object-cover"
+                />
+              </Link>
+              <WorkspaceSelector collapsed={false} />
             </div>
-          </div>
-        ))}
-      </nav>
-
-      {/* Footer */}
-      <div className="border-t border-sidebar-border py-1.5 px-1.5 shrink-0">
-        <NavLink
-          to="/settings/workspace"
-          className={({ isActive }) =>
-            clsx(
-              'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm transition-colors text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground',
-              collapsed ? 'justify-center' : '',
-              isActive && 'bg-sidebar-active text-accent',
-            )
-          }
-          title={collapsed ? '설정' : undefined}
-        >
-          <Settings size={15} className="shrink-0" aria-hidden="true" />
-          {!collapsed && <span className="flex-1">설정</span>}
-        </NavLink>
-
-        <button
-          className={clsx(
-            'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors',
-            collapsed ? 'justify-center' : '',
           )}
-          onClick={() => console.log('TODO: open help')}
-          title={collapsed ? '고객지원' : undefined}
-        >
-          <HelpCircle size={15} className="shrink-0" aria-hidden="true" />
-          {!collapsed && <span className="flex-1">고객지원</span>}
-        </button>
 
-        {/* Mobile: close button */}
-        <button
-          onClick={onMobileClose}
-          className={clsx(
-            'md:hidden flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm text-muted-foreground',
-            'hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors',
+          {/* 데스크톱 전용: 헤더 접기 버튼 (펼쳐진 상태에서만 노출) */}
+          {!collapsed && (
+            <button
+              onClick={onToggle}
+              aria-label="사이드바 접기"
+              aria-controls="nav_side_menu"
+              aria-expanded={true}
+              className="hidden md:flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors shrink-0"
+            >
+              <PanelLeftClose size={14} aria-hidden="true" />
+            </button>
           )}
-          aria-label="사이드바 닫기"
-        >
-          <X size={15} /><span>닫기</span>
-        </button>
+        </div>
 
-        {/* Desktop: collapse toggle */}
+        {/* 내비게이션 스크롤 영역 */}
+        <nav className="flex-1 overflow-y-auto py-2" role="navigation" aria-label="주 내비게이션">
+          {NAV_GROUPS.map((group, groupIdx) => (
+            <div key={group.label} className={groupIdx > 0 ? 'mt-1' : ''}>
+              {/* 그룹 레이블 */}
+              {!collapsed ? (
+                <div className="mx-3 mt-3 mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-micro font-medium text-muted-foreground/60 uppercase tracking-widest">
+                      {group.label}
+                    </span>
+                    <div className="flex-1 border-t border-sidebar-border" />
+                  </div>
+                </div>
+              ) : groupIdx > 0 ? (
+                <div className="mx-2.5 my-2 border-t border-sidebar-border" />
+              ) : null}
+
+              {/* 아이템 */}
+              <div className="px-1.5">
+                {group.items.map((item) => (
+                  <Tooltip
+                    key={item.to}
+                    label={collapsed ? item.label : ''}
+                    placement="right"
+                    block
+                  >
+                    <NavLink
+                      to={item.to}
+                      end={item.to === '/'}
+                      aria-current={undefined}
+                      className={({ isActive }) =>
+                        clsx(
+                          'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm transition-colors',
+                          'text-sidebar-foreground hover:bg-sidebar-hover cursor-pointer',
+                          collapsed ? 'justify-center' : '',
+                          isActive && 'bg-sidebar-active text-accent font-medium',
+                        )
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <item.icon
+                            size={15}
+                            className={clsx('shrink-0', isActive ? 'text-accent' : '')}
+                            aria-hidden="true"
+                          />
+                          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                          {!collapsed && item.badge && item.badge > 0 && (
+                            <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-foreground text-micro font-medium">
+                              {item.badge}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* 가장자리 핸들 토글 (데스크톱 전용) */}
         <button
           onClick={onToggle}
+          aria-label={collapsed ? '메뉴 펼치기' : '메뉴 접기'}
+          aria-controls="nav_side_menu"
+          aria-expanded={!collapsed}
           className={clsx(
-            'hidden md:flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm text-muted-foreground',
-            'hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors',
-            collapsed ? 'justify-center' : '',
+            'hidden md:flex absolute top-1/2 -translate-y-1/2 translate-x-1/2 z-10',
+            'items-center justify-center w-3.5 h-8 rounded-r-md',
+            'bg-sidebar border border-sidebar-border',
+            'text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground',
+            'transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
+            'right-0',
           )}
-          aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
         >
-          {collapsed
-            ? <PanelLeftOpen size={15} />
-            : <><PanelLeftClose size={15} /><span>접기</span></>
-          }
+          {collapsed ? (
+            <ChevronsRight size={11} aria-hidden="true" />
+          ) : (
+            <ChevronsLeft size={11} aria-hidden="true" />
+          )}
         </button>
-      </div>
-    </aside>
+
+        {/* 푸터 */}
+        <div className="border-t border-sidebar-border py-1.5 px-1.5 shrink-0">
+          {/* 설정 */}
+          <Tooltip label={collapsed ? '설정' : ''} placement="right" block>
+            <NavLink
+              to="/settings/workspace"
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm transition-colors text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground',
+                  collapsed ? 'justify-center' : '',
+                  isActive && 'bg-sidebar-active text-accent',
+                )
+              }
+            >
+              <Settings size={15} className="shrink-0" aria-hidden="true" />
+              {!collapsed && <span className="flex-1">설정</span>}
+            </NavLink>
+          </Tooltip>
+
+          {/* 고객지원 — 페이지로 이동 */}
+          <Tooltip label={collapsed ? '고객지원' : ''} placement="right" block>
+            <NavLink
+              to="/support"
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm transition-colors text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground',
+                  collapsed ? 'justify-center' : '',
+                  isActive && 'bg-sidebar-active text-accent',
+                )
+              }
+            >
+              <HelpCircle size={15} className="shrink-0" aria-hidden="true" />
+              {!collapsed && <span className="flex-1">고객지원</span>}
+            </NavLink>
+          </Tooltip>
+
+          {/* 모바일: 닫기 버튼 */}
+          <button
+            onClick={onMobileClose}
+            className={clsx(
+              'md:hidden flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm text-muted-foreground',
+              'hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors',
+            )}
+            aria-label="사이드바 닫기"
+          >
+            <X size={15} aria-hidden="true" />
+            <span>닫기</span>
+          </button>
+
+          {/* 데스크톱: 접기/펼치기 토글 — 항상 노출 */}
+          <Tooltip
+            label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
+            placement="right"
+            block
+          >
+            <button
+              onClick={onToggle}
+              aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
+              aria-controls="nav_side_menu"
+              aria-expanded={!collapsed}
+              className={clsx(
+                'hidden md:flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm text-muted-foreground',
+                'hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors',
+                collapsed ? 'justify-center' : '',
+              )}
+            >
+              {collapsed ? (
+                <PanelLeftOpen size={15} aria-hidden="true" />
+              ) : (
+                <>
+                  <PanelLeftClose size={15} aria-hidden="true" />
+                  <span>접기</span>
+                </>
+              )}
+            </button>
+          </Tooltip>
+        </div>
+      </aside>
     </>
   )
 }

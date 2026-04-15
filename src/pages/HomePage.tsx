@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 import { useEffect, useMemo, useState } from 'react'
+=======
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+>>>>>>> main
 import clsx from 'clsx'
 import { Sparkles, Calendar } from 'lucide-react'
 import MeetingCard from '../components/home/MeetingCard'
@@ -169,7 +174,11 @@ function NextMeetingBanner({ meetings }: { meetings: Meeting[] }) {
   const label = diffHours > 0 ? `${diffHours}시간 ${diffMins}분 후` : `${diffMins}분 후`
 
   return (
-    <div className="p-3 rounded-lg bg-accent-subtle border border-accent/20">
+    <Link
+      to={`/meetings/${next.id}/upcoming`}
+      aria-label={`다음 회의: ${next.title} 상세 보기`}
+      className="block p-3 rounded-lg bg-accent-subtle border border-accent/20 hover:border-accent/50 hover:bg-accent/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+    >
       <div className="flex items-center gap-1.5 mb-1">
         <Sparkles size={12} className="text-accent" />
         <span className="text-mini font-medium text-accent">다음 회의</span>
@@ -179,6 +188,6 @@ function NextMeetingBanner({ meetings }: { meetings: Meeting[] }) {
       <p className="text-mini text-muted-foreground mt-0.5">
         {next.participants.length}명 참석 예정
       </p>
-    </div>
+    </Link>
   )
 }
