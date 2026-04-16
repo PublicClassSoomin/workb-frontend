@@ -29,10 +29,10 @@ export default function ExportPage() {
   }
 
   const exportTargets = [
-    { id: 'jira', label: 'JIRA 이슈 생성', desc: 'WBS 태스크를 JIRA 이슈로 자동 생성', icon: '🔵', connected: INTEGRATIONS.find((i) => i.id === 'jira')?.status === 'connected' },
+    { id: 'jira', label: 'JIRA 이슈 생성', desc: 'WBS 태스크를 JIRA 이슈로 자동 생성', icon: '🔵', connected: INTEGRATIONS.find((i) => i.service === 'jira')?.is_connected ?? false },
     { id: 'excel', label: 'Excel 내보내기', desc: '회의록·WBS를 엑셀 파일로 다운로드', icon: '📊', connected: true },
-    { id: 'notion', label: 'Notion 내보내기', desc: 'Notion 페이지로 자동 저장', icon: '📝', connected: INTEGRATIONS.find((i) => i.id === 'notion')?.status === 'connected' },
-    { id: 'slack', label: 'Slack 공유', desc: '선택한 채널에 회의 요약 공유', icon: '💬', connected: INTEGRATIONS.find((i) => i.id === 'slack')?.status === 'connected' },
+    { id: 'notion', label: 'Notion 내보내기', desc: 'Notion 페이지로 자동 저장', icon: '📝', connected: INTEGRATIONS.find((i) => i.service === 'notion')?.is_connected ?? false },
+    { id: 'slack', label: 'Slack 공유', desc: '선택한 채널에 회의 요약 공유', icon: '💬', connected: INTEGRATIONS.find((i) => i.service === 'slack')?.is_connected ?? false },
   ]
 
   return (

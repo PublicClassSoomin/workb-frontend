@@ -1,5 +1,5 @@
 // src/api/client.ts
-const BASE_URL = 'http://workb-backend-production.up.railway.app/api/v1'
+const BASE_URL = 'https://workb-backend-production.up.railway.app/api/v1'
 
 export async function apiFetch<T>(
   path: string,
