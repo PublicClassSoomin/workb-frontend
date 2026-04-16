@@ -16,17 +16,74 @@ export default function NewMeetingPage() {
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([])
   const navigate = useNavigate()
 
+  function getBaseUrl() {
+    const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+    if (!base) throw new Error('VITE_API_BASE_URL is not set')
+    return base.replace(/\/+$/, '')
+  }
+
+  function todayYmd() {
+    const d = new Date()
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
+  function isPastScheduled(nextDate: string, nextTime: string) {
+    if (!nextDate || !nextTime) return false
+    const dt = new Date(`${nextDate}T${nextTime}:00`)
+    return dt.getTime() < Date.now()
+  }
+
   function toggleParticipant(id: string) {
     setSelectedParticipants((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     )
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    // TODO: create meeting API
-    console.log('TODO: create meeting', { title, date, time, duration, meetingType, selectedParticipants })
-    navigate('/meetings/m1/agenda')
+    if (!date || !time) {
+      alert('날짜와 시간을 선택해 주세요.')
+      return
+    }
+    if (isPastScheduled(date, time)) {
+      alert('현재보다 이전 시간으로 회의를 예약할 수 없습니다.')
+      return
+    }
+
+    const token =
+      localStorage.getItem('access_token') ||
+      localStorage.getItem('token') ||
+      localStorage.getItem('authToken')
+
+    const body = {
+      title,
+      meeting_type: meetingType || '일반 회의',
+      scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+      participant_ids: selectedParticipants.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
+      sync_google_calendar: false,
+    }
+
+    const res = await fetch(`${getBaseUrl()}/api/v1/workspaces/1/meetings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      alert(`회의 생성 실패 (${res.status})\n${text}`)
+      return
+    }
+
+    // success -> go home
+    navigate('/')
   }
 
   return (
@@ -61,7 +118,15 @@ export default function NewMeetingPage() {
             </label>
             <DatePicker
               value={date}
-              onChange={setDate}
+              onChange={(next) => {
+                if (next < todayYmd()) {
+                  alert('현재보다 이전 날짜로 회의를 예약할 수 없습니다.')
+                  return
+                }
+                setDate(next)
+                // If selecting today and time already set to a past time, reset time.
+                if (time && isPastScheduled(next, time)) setTime('')
+              }}
               placeholder="날짜 선택"
             />
           </div>
@@ -72,7 +137,13 @@ export default function NewMeetingPage() {
             </label>
             <TimePicker
               value={time}
-              onChange={setTime}
+              onChange={(next) => {
+                if (date && isPastScheduled(date, next)) {
+                  alert('현재보다 이전 시간으로 회의를 예약할 수 없습니다.')
+                  return
+                }
+                setTime(next)
+              }}
               placeholder="시간 선택"
             />
           </div>
@@ -174,7 +245,7 @@ export default function NewMeetingPage() {
             type="submit"
             className="flex-1 h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
           >
-            회의 만들고 아젠다 설정
+            회의 생성
           </button>
         </div>
       </form>

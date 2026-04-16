@@ -1,9 +1,5 @@
-<<<<<<< HEAD
 import { useEffect, useMemo, useState } from 'react'
-=======
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
->>>>>>> main
 import clsx from 'clsx'
 import { Sparkles, Calendar } from 'lucide-react'
 import MeetingCard from '../components/home/MeetingCard'

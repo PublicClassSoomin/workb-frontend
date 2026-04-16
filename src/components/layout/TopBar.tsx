@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import { useState } from 'react'
-=======
 import { useState, useRef, useEffect } from 'react'
->>>>>>> main
 import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Sun, Moon, Bell, Monitor, Menu } from 'lucide-react'
 import clsx from 'clsx'
@@ -32,8 +28,9 @@ export default function TopBar({
 }: TopBarProps) {
   const navigate = useNavigate()
   const [searchFocused, setSearchFocused] = useState(false)
-<<<<<<< HEAD
   const [searchQuery, setSearchQuery] = useState('')
+  const [notifOpen, setNotifOpen] = useState(false)
+  const notifRef = useRef<HTMLDivElement>(null)
 
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return
@@ -45,9 +42,6 @@ export default function TopBar({
       navigate('/history')
     }
   }
-=======
-  const [notifOpen, setNotifOpen] = useState(false)
-  const notifRef = useRef<HTMLDivElement>(null)
 
   // 알림 패널 외부 클릭으로 닫기
   useEffect(() => {
@@ -60,7 +54,6 @@ export default function TopBar({
     document.addEventListener('mousedown', handleDown)
     return () => document.removeEventListener('mousedown', handleDown)
   }, [notifOpen])
->>>>>>> main
 
   return (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-11 border-b border-border bg-background shrink-0">
@@ -95,11 +88,7 @@ export default function TopBar({
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setSearchFocused(false)}
           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
-<<<<<<< HEAD
-=======
           aria-label="회의 검색"
-          // TODO: implement real search handler
->>>>>>> main
         />
         {!searchFocused && (
           <kbd className="hidden sm:flex items-center gap-0.5 text-micro text-muted-foreground">
@@ -113,20 +102,6 @@ export default function TopBar({
 
       {/* 액션 영역 */}
       <div className="flex items-center gap-1">
-<<<<<<< HEAD
-        {/* New meeting button */}
-        <button
-          type="button"
-          className={clsx(
-            'flex items-center gap-1.5 h-7 px-3 rounded text-sm font-medium transition-colors',
-            'bg-accent text-accent-foreground hover:opacity-90',
-          )}
-          onClick={() => navigate('/meetings/new')}
-        >
-          <Plus size={13} />
-          <span className="hidden sm:inline">새 회의</span>
-        </button>
-=======
         {/* 새 회의 버튼 → /meetings/new */}
         <Tooltip label="새 회의 생성" placement="bottom">
           <button
@@ -141,7 +116,6 @@ export default function TopBar({
             <span className="hidden sm:inline">새 회의</span>
           </button>
         </Tooltip>
->>>>>>> main
 
         {/* 알림 버튼 + 팝오버 */}
         <div ref={notifRef} className="relative">
