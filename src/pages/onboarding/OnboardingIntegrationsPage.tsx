@@ -3,45 +3,82 @@ import { useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import {
   getIntegrations,
-  connectIntegration,
+  getOAuthUrl,
+  connectJira,
+  connectKakao,
   disconnectIntegration,
   type IntegrationItem,
   type ServiceName,
+  type OAuthService,
+  type JiraConnectBody,
 } from '../../api/integrations'
 
 const WORKSPACE_ID = 1 // TODO: auth context에서 가져오기
 
-const SERVICE_META: Record<ServiceName, { name: string; description: string; icon: string }> = {
-  jira:            { name: 'JIRA',            description: '이슈 자동 생성 및 WBS 매핑',      icon: '🔵' },
-  slack:           { name: 'Slack',           description: '회의 요약 및 액션 아이템 알림',    icon: '💬' },
-  notion:          { name: 'Notion',          description: '회의록 자동 내보내기',             icon: '📝' },
-  google_calendar: { name: 'Google Calendar', description: '회의 일정 연동 및 자동 등록',      icon: '📅' },
-  kakao:           { name: '카카오톡 알림',   description: '회의 요약·액션 아이템 알림 발송',  icon: '💛' },
+const OAUTH_SERVICES: OAuthService[] = ['google_calendar', 'slack', 'notion']
+
+const SERVICE_META: Record<ServiceName, { name: string; description: string; icon: string; buttonLabel: string }> = {
+  jira:            { name: 'JIRA',            description: '이슈 자동 생성 및 WBS 매핑',      icon: '🔵', buttonLabel: 'API Key 입력' },
+  slack:           { name: 'Slack',           description: '회의 요약 및 액션 아이템 알림',    icon: '💬', buttonLabel: 'Slack에 추가'  },
+  notion:          { name: 'Notion',          description: '회의록 자동 내보내기',             icon: '📝', buttonLabel: 'Notion 연결'  },
+  google_calendar: { name: 'Google Calendar', description: '회의 일정 연동 및 자동 등록',      icon: '📅', buttonLabel: 'Google 연결'  },
+  kakao:           { name: '카카오톡 알림',   description: '회의 요약·액션 아이템 알림 발송',  icon: '💛', buttonLabel: 'API Key 입력' },
 }
+
+type ModalState = { type: 'jira' } | { type: 'kakao' } | null
 
 export default function OnboardingIntegrationsPage() {
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
-  const [modalService, setModalService] = useState<ServiceName | null>(null)
-  const [webhookInput, setWebhookInput] = useState('')
+  const [modal, setModal] = useState<ModalState>(null)
+  const [jiraForm, setJiraForm] = useState<JiraConnectBody>({
+    domain: '', email: '', api_token: '', project_key: '',
+  })
+  const [kakaoApiKey, setKakaoApiKey] = useState('')
   const navigate = useNavigate()
 
-  useEffect(() => {
+  const refreshList = () =>
     getIntegrations(WORKSPACE_ID).then((res) => setIntegrations(res.integrations))
+
+  useEffect(() => {
+    // OAuth 콜백 후 리다이렉트 파라미터 처리
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('status')
+    if (status) {
+      window.history.replaceState({}, '', '/onboarding/integrations')
+    }
+    refreshList()
   }, [])
 
-  async function handleConnect() {
-    if (!modalService || !webhookInput.trim()) return
-    await connectIntegration(WORKSPACE_ID, modalService, webhookInput.trim())
-    const res = await getIntegrations(WORKSPACE_ID)
-    setIntegrations(res.integrations)
-    setModalService(null)
-    setWebhookInput('')
+  async function handleConnect(service: ServiceName) {
+    if (OAUTH_SERVICES.includes(service as OAuthService)) {
+      const { auth_url } = await getOAuthUrl(service as OAuthService, WORKSPACE_ID)
+      window.location.href = auth_url
+    } else if (service === 'jira') {
+      setJiraForm({ domain: '', email: '', api_token: '', project_key: '' })
+      setModal({ type: 'jira' })
+    } else if (service === 'kakao') {
+      setKakaoApiKey('')
+      setModal({ type: 'kakao' })
+    }
   }
 
   async function handleDisconnect(service: ServiceName) {
     await disconnectIntegration(WORKSPACE_ID, service)
-    const res = await getIntegrations(WORKSPACE_ID)
-    setIntegrations(res.integrations)
+    await refreshList()
+  }
+
+  async function handleJiraSubmit() {
+    if (!jiraForm.domain || !jiraForm.email || !jiraForm.api_token || !jiraForm.project_key) return
+    await connectJira(WORKSPACE_ID, jiraForm)
+    await refreshList()
+    setModal(null)
+  }
+
+  async function handleKakaoSubmit() {
+    if (!kakaoApiKey.trim()) return
+    await connectKakao(WORKSPACE_ID, kakaoApiKey.trim())
+    await refreshList()
+    setModal(null)
   }
 
   return (
@@ -86,10 +123,10 @@ export default function OnboardingIntegrationsPage() {
                 </div>
               ) : (
                 <button
-                  onClick={() => { setModalService(item.service); setWebhookInput('') }}
+                  onClick={() => handleConnect(item.service)}
                   className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
                 >
-                  연결
+                  {meta.buttonLabel}
                 </button>
               )}
             </div>
@@ -110,34 +147,66 @@ export default function OnboardingIntegrationsPage() {
         건너뛰기
       </button>
 
-      {/* Webhook URL 입력 모달 */}
-      {modalService && (
+      {/* JIRA 모달 */}
+      {modal?.type === 'jira' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-xl border border-border p-6 w-full max-w-sm mx-4">
-            <h2 className="text-base font-semibold text-foreground mb-1">
-              {SERVICE_META[modalService].name} 연결
-            </h2>
-            <p className="text-mini text-muted-foreground mb-4">
-              n8n에서 생성한 webhook URL을 입력하세요.
-            </p>
-            <input
-              type="text"
-              value={webhookInput}
-              onChange={(e) => setWebhookInput(e.target.value)}
-              placeholder="http://localhost:5678/webhook/..."
+            <h2 className="text-base font-semibold text-foreground mb-1">JIRA 연결</h2>
+            <p className="text-mini text-muted-foreground mb-4">Atlassian 계정 정보를 입력하세요.</p>
+            <div className="flex flex-col gap-2 mb-4">
+              <input type="text" placeholder="도메인 (예: company.atlassian.net)"
+                value={jiraForm.domain}
+                onChange={(e) => setJiraForm({ ...jiraForm, domain: e.target.value })}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <input type="email" placeholder="이메일 (Atlassian 계정)"
+                value={jiraForm.email}
+                onChange={(e) => setJiraForm({ ...jiraForm, email: e.target.value })}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <input type="password" placeholder="API Token"
+                value={jiraForm.api_token}
+                onChange={(e) => setJiraForm({ ...jiraForm, api_token: e.target.value })}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <input type="text" placeholder="프로젝트 키 (예: PROJ)"
+                value={jiraForm.project_key}
+                onChange={(e) => setJiraForm({ ...jiraForm, project_key: e.target.value })}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setModal(null)}
+                className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
+                취소
+              </button>
+              <button onClick={handleJiraSubmit}
+                className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 카카오 모달 */}
+      {modal?.type === 'kakao' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-xl border border-border p-6 w-full max-w-sm mx-4">
+            <h2 className="text-base font-semibold text-foreground mb-1">카카오톡 알림 연결</h2>
+            <p className="text-mini text-muted-foreground mb-4">카카오 REST API Key를 입력하세요.</p>
+            <input type="password" placeholder="REST API Key"
+              value={kakaoApiKey}
+              onChange={(e) => setKakaoApiKey(e.target.value)}
               className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setModalService(null)}
-                className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors"
-              >
+              <button onClick={() => setModal(null)}
+                className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
                 취소
               </button>
-              <button
-                onClick={handleConnect}
-                className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
-              >
+              <button onClick={handleKakaoSubmit}
+                className="h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
                 저장
               </button>
             </div>

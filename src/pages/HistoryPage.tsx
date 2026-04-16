@@ -108,10 +108,10 @@ export default function HistoryPage() {
   }, [searchKeyword])
 
   const filtered = useMemo(() => {
-    if (!participantFilter) return meetingsHistory
-    // TODO: backend에서 participant filter를 지원하면 API 파라미터로 이동
+    // 현재는 backend가 keyword로 필터링을 수행하므로, 프론트에서는 추가 필터링을 최소화합니다.
+    // (participant filter는 추후 API 파라미터로 지원되면 이곳에서 qs에 포함시키는 방식으로 확장)
     return meetingsHistory
-  }, [meetingsHistory, participantFilter])
+  }, [meetingsHistory])
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6">

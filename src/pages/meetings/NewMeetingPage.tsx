@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Tag } from 'lucide-react'
-import { PARTICIPANTS } from '../../data/mockData'
+import { Users, Tag, DoorOpen, Search, X, UsersRound } from 'lucide-react'
+import { PARTICIPANTS, DEPARTMENTS } from '../../data/mockData'
+import type { Participant } from '../../types/meeting'
 import DatePicker from '../../components/ui/DatePicker'
 import TimePicker from '../../components/ui/TimePicker'
 
@@ -9,11 +10,17 @@ const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업'
 
 export default function NewMeetingPage() {
   const [title, setTitle] = useState('')
+  const [roomName, setRoomName] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [duration, setDuration] = useState('60')
   const [meetingType, setMeetingType] = useState('')
-  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([])
+  const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
   function getBaseUrl() {
@@ -36,10 +43,92 @@ export default function NewMeetingPage() {
     return dt.getTime() < Date.now()
   }
 
-  function toggleParticipant(id: string) {
-    setSelectedParticipants((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    )
+  const trimmed = searchQuery.trim().toLowerCase()
+
+  // 매칭된 개별 직원 (이름 또는 부서명으로 검색)
+  const filteredCandidates = PARTICIPANTS.filter(
+    (p) =>
+      !selectedParticipants.some((s) => s.id === p.id) &&
+      (trimmed === '' ||
+        p.name.toLowerCase().includes(trimmed) ||
+        (p.department?.toLowerCase().includes(trimmed) ?? false))
+  )
+
+  // 매칭된 부서 그룹 (부서명이 검색어를 포함하거나, 검색어가 비어있을 때 전체 부서)
+  const matchedDepartments = DEPARTMENTS.filter(
+    (d) => trimmed === '' || d.name.toLowerCase().includes(trimmed)
+  )
+
+  // 드롭다운 아이템 총 수 (부서 그룹 + 개별 직원)
+  const totalItems = matchedDepartments.length + filteredCandidates.length
+
+  useEffect(() => {
+    setHighlightedIndex(0)
+  }, [searchQuery])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        searchRef.current &&
+        !searchRef.current.contains(e.target as Node)
+      ) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  function addParticipant(p: Participant) {
+    if (selectedParticipants.some((s) => s.id === p.id)) return
+    setSelectedParticipants((prev) => [...prev, p])
+  }
+
+  function addDepartment(deptName: string) {
+    const members = PARTICIPANTS.filter((p) => p.department === deptName)
+    setSelectedParticipants((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id))
+      const toAdd = members.filter((p) => !existingIds.has(p.id))
+      return [...prev, ...toAdd]
+    })
+    setSearchQuery('')
+    setDropdownOpen(false)
+    searchRef.current?.focus()
+  }
+
+  function removeParticipant(id: string) {
+    setSelectedParticipants((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!dropdownOpen || totalItems === 0) {
+      if (e.key === 'ArrowDown' && totalItems > 0) setDropdownOpen(true)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightedIndex((i) => Math.min(i + 1, totalItems - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightedIndex((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (highlightedIndex < matchedDepartments.length) {
+        addDepartment(matchedDepartments[highlightedIndex].name)
+      } else {
+        const candidate = filteredCandidates[highlightedIndex - matchedDepartments.length]
+        if (candidate) {
+          addParticipant(candidate)
+          setSearchQuery('')
+          setDropdownOpen(false)
+          searchRef.current?.focus()
+        }
+      }
+    } else if (e.key === 'Escape') {
+      setDropdownOpen(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -58,11 +147,15 @@ export default function NewMeetingPage() {
       localStorage.getItem('token') ||
       localStorage.getItem('authToken')
 
+    const participant_ids = selectedParticipants
+      .map((p) => Number(String(p.id).replace(/\D/g, '')))
+      .filter((n) => Number.isFinite(n))
+
     const body = {
       title,
       meeting_type: meetingType || '일반 회의',
       scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
-      participant_ids: selectedParticipants.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
+      participant_ids,
       sync_google_calendar: false,
     }
 
@@ -90,7 +183,7 @@ export default function NewMeetingPage() {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-foreground">회의 생성 · 예약</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">새 회의를 예약하고 아젠다를 설정하세요.</p>
+        <p className="text-sm text-muted-foreground mt-0.5">새 회의를 예약하세요.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -109,9 +202,22 @@ export default function NewMeetingPage() {
           />
         </div>
 
+        {/* 회의실 이름 */}
+        <div>
+          <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
+            <DoorOpen size={14} aria-hidden="true" /> 회의실 이름
+          </label>
+          <input
+            type="text"
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value)}
+            placeholder="예: 대회의실 A, 개발실 B"
+            className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          />
+        </div>
+
         {/* 날짜 & 시간 */}
         <div className="grid grid-cols-2 gap-3">
-          {/* DatePicker — 커스텀 달력 */}
           <div>
             <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
               날짜
@@ -130,7 +236,6 @@ export default function NewMeetingPage() {
               placeholder="날짜 선택"
             />
           </div>
-
           <div>
             <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
               시간
@@ -185,35 +290,176 @@ export default function NewMeetingPage() {
           </select>
         </div>
 
-        {/* 참석자 */}
+        {/* 직원 검색 */}
         <div>
           <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
-            <Users size={14} aria-hidden="true" /> 참석자
+            <Users size={14} aria-hidden="true" /> 직원 검색
           </label>
-          <div className="flex flex-wrap gap-2">
-            {PARTICIPANTS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => toggleParticipant(p.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${
-                  selectedParticipants.includes(p.id)
-                    ? 'border-accent bg-accent-subtle text-accent'
-                    : 'border-border text-muted-foreground hover:border-foreground'
-                }`}
-                aria-pressed={selectedParticipants.includes(p.id)}
-              >
+
+          {/* 선택된 직원 Chip 목록 */}
+          {selectedParticipants.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {selectedParticipants.map((p) => (
                 <span
-                  className="w-4 h-4 rounded-full flex items-center justify-center text-white text-micro"
-                  style={{ backgroundColor: p.color }}
-                  aria-hidden="true"
+                  key={p.id}
+                  className="flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 rounded-full border border-accent bg-accent-subtle text-accent text-sm"
                 >
-                  {p.avatarInitials[0]}
+                  <span
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-white text-micro shrink-0"
+                    style={{ backgroundColor: p.color }}
+                    aria-hidden="true"
+                  >
+                    {p.avatarInitials[0]}
+                  </span>
+                  {p.name}
+                  {p.department && (
+                    <span className="text-micro text-accent/60">({p.department})</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeParticipant(p.id)}
+                    className="ml-0.5 hover:text-accent/60 transition-colors"
+                    aria-label={`${p.name} 제거`}
+                  >
+                    <X size={12} />
+                  </button>
                 </span>
-                {p.name}
-              </button>
-            ))}
+              ))}
+            </div>
+          )}
+
+          {/* 검색 입력 + 드롭다운 */}
+          <div className="relative">
+            <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-border bg-card focus-within:ring-2 focus-within:ring-accent/30 focus-within:border-accent">
+              <Search size={14} className="text-muted-foreground shrink-0" aria-hidden="true" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setDropdownOpen(true)
+                }}
+                onFocus={() => setDropdownOpen(true)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="이름 또는 부서명으로 검색..."
+                className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+                aria-label="직원 검색"
+                aria-expanded={dropdownOpen}
+                aria-haspopup="listbox"
+                role="combobox"
+                aria-autocomplete="list"
+              />
+            </div>
+
+            {dropdownOpen && totalItems > 0 && (
+              <div
+                ref={dropdownRef}
+                role="listbox"
+                aria-label="직원 및 부서 목록"
+                className="absolute z-20 top-full left-0 right-0 mt-1 rounded-lg border border-border bg-card shadow-lg overflow-hidden max-h-64 overflow-y-auto"
+              >
+                {/* 부서 그룹 섹션 */}
+                {matchedDepartments.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-micro font-medium text-muted-foreground uppercase tracking-wide bg-muted/40 border-b border-border">
+                      부서 전체 추가
+                    </div>
+                    {matchedDepartments.map((dept, idx) => {
+                      const membersInDept = PARTICIPANTS.filter((p) => p.department === dept.name)
+                      const alreadyAdded = membersInDept.filter((p) =>
+                        selectedParticipants.some((s) => s.id === p.id)
+                      ).length
+                      const newCount = membersInDept.length - alreadyAdded
+                      const isHighlighted = idx === highlightedIndex
+                      return (
+                        <button
+                          key={dept.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isHighlighted}
+                          onMouseEnter={() => setHighlightedIndex(idx)}
+                          onClick={() => addDepartment(dept.name)}
+                          className={`flex items-center justify-between w-full px-3 py-2 text-sm transition-colors ${
+                            isHighlighted
+                              ? 'bg-accent-subtle text-accent'
+                              : 'text-foreground hover:bg-muted/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <UsersRound size={14} className="shrink-0" aria-hidden="true" />
+                            <span>{dept.name}</span>
+                          </div>
+                          <span className="text-mini text-muted-foreground">
+                            {newCount > 0 ? `+${newCount}명 추가` : '모두 추가됨'}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+
+                {/* 개별 직원 섹션 */}
+                {filteredCandidates.length > 0 && (
+                  <>
+                    {matchedDepartments.length > 0 && (
+                      <div className="px-3 py-1.5 text-micro font-medium text-muted-foreground uppercase tracking-wide bg-muted/40 border-b border-border">
+                        직원
+                      </div>
+                    )}
+                    {filteredCandidates.map((p, idx) => {
+                      const itemIdx = matchedDepartments.length + idx
+                      const isHighlighted = itemIdx === highlightedIndex
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isHighlighted}
+                          onMouseEnter={() => setHighlightedIndex(itemIdx)}
+                          onClick={() => {
+                            addParticipant(p)
+                            setSearchQuery('')
+                            setDropdownOpen(false)
+                            searchRef.current?.focus()
+                          }}
+                          className={`flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors text-left ${
+                            isHighlighted
+                              ? 'bg-accent-subtle text-accent'
+                              : 'text-foreground hover:bg-muted/50'
+                          }`}
+                        >
+                          <span
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-micro shrink-0"
+                            style={{ backgroundColor: p.color }}
+                            aria-hidden="true"
+                          >
+                            {p.avatarInitials[0]}
+                          </span>
+                          <span className="flex-1">{p.name}</span>
+                          {p.department && (
+                            <span className="text-mini text-muted-foreground">{p.department}</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            )}
+
+            {dropdownOpen && trimmed !== '' && totalItems === 0 && (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-lg border border-border bg-card shadow-lg px-3 py-2.5 text-sm text-muted-foreground">
+                검색 결과가 없습니다.
+              </div>
+            )}
           </div>
+
+          {selectedParticipants.length === 0 && (
+            <p className="text-mini text-muted-foreground mt-1.5">
+              이름 또는 부서명으로 검색해 추가하세요. 부서 선택 시 소속 직원이 일괄 추가됩니다.
+            </p>
+          )}
         </div>
 
         {/* Google Calendar 연동 */}
