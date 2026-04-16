@@ -24,7 +24,6 @@ import SupportPage from './pages/SupportPage'
 
 // Meeting pages
 import NewMeetingPage from './pages/meetings/NewMeetingPage'
-import AgendaPage from './pages/meetings/AgendaPage'
 import MeetingContextPage from './pages/meetings/MeetingContextPage'
 import NotesPage from './pages/meetings/NotesPage'
 import NotesEditPage from './pages/meetings/NotesEditPage'
@@ -35,9 +34,6 @@ import UpcomingMeetingPage from './pages/meetings/UpcomingMeetingPage'
 
 // Live pages
 import LivePage from './pages/live/LivePage'
-import LiveSearchPage from './pages/live/LiveSearchPage'
-import LiveScreenPage from './pages/live/LiveScreenPage'
-import LiveSpeakersPage from './pages/live/LiveSpeakersPage'
 
 // Settings pages
 import WorkspaceSettingsPage from './pages/settings/WorkspaceSettingsPage'
@@ -45,6 +41,7 @@ import MembersSettingsPage from './pages/settings/MembersSettingsPage'
 import VoiceSettingsPage from './pages/settings/VoiceSettingsPage'
 import IntegrationsSettingsPage from './pages/settings/IntegrationsSettingsPage'
 import DeviceSettingsPage from './pages/settings/DeviceSettingsPage'
+import DepartmentsSettingsPage from './pages/settings/DepartmentsSettingsPage'
 
 export default function App() {
   return (
@@ -69,9 +66,10 @@ export default function App() {
         <Route element={<FullscreenLayout />}>
           <Route path="/live" element={<LivePage />} />
           <Route path="/live/:meetingId" element={<LivePage />} />
-          <Route path="/live/:meetingId/search" element={<LiveSearchPage />} />
-          <Route path="/live/:meetingId/screen" element={<LiveScreenPage />} />
-          <Route path="/live/:meetingId/speakers" element={<LiveSpeakersPage />} />
+          {/* 보조 기능은 LivePage 내 패널로 통합됨 — 이하 리다이렉트 */}
+          <Route path="/live/:meetingId/search" element={<Navigate to="/live/:meetingId" replace />} />
+          <Route path="/live/:meetingId/screen" element={<Navigate to="/live/:meetingId" replace />} />
+          <Route path="/live/:meetingId/speakers" element={<Navigate to="/live/:meetingId" replace />} />
         </Route>
 
         {/* ── 앱 셸 라우트 ── */}
@@ -91,7 +89,6 @@ export default function App() {
           {/* 회의: 생성 & 사전 */}
           <Route path="meetings/new" element={<NewMeetingPage />} />
           <Route path="meetings/context" element={<MeetingContextPage />} />
-          <Route path="meetings/:meetingId/agenda" element={<AgendaPage />} />
 
           {/* 회의: 예정 */}
           <Route path="meetings/:meetingId/upcoming" element={<UpcomingMeetingPage />} />
@@ -106,6 +103,7 @@ export default function App() {
           {/* 설정 */}
           <Route path="settings/workspace" element={<WorkspaceSettingsPage />} />
           <Route path="settings/members" element={<MembersSettingsPage />} />
+          <Route path="settings/departments" element={<DepartmentsSettingsPage />} />
           <Route path="settings/voice" element={<VoiceSettingsPage />} />
           <Route path="settings/integrations" element={<IntegrationsSettingsPage />} />
           <Route path="settings/device" element={<DeviceSettingsPage />} />

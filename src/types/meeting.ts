@@ -7,6 +7,12 @@ export interface Participant {
   name: string
   avatarInitials: string
   color: string
+  department?: string
+}
+
+export interface Department {
+  id: string
+  name: string
 }
 
 export interface ActionItem {
@@ -23,6 +29,7 @@ export interface ActionItem {
 export interface Meeting {
   id: string
   title: string
+  roomName?: string
   status: MeetingStatus
   startAt: string        // ISO 8601
   endAt?: string
