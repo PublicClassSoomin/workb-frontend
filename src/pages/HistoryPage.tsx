@@ -17,9 +17,11 @@ export default function HistoryPage() {
 
   const filtered = useMemo(() => {
     return historyMeetings.filter((m) => {
+      const lq = query.toLowerCase()
       const matchQuery = query === '' ||
-        m.title.toLowerCase().includes(query.toLowerCase()) ||
-        m.tags.some((t) => t.includes(query))
+        m.title.toLowerCase().includes(lq) ||
+        m.tags.some((t) => t.toLowerCase().includes(lq)) ||
+        (m.roomName?.toLowerCase().includes(lq) ?? false)
 
       const matchParticipant = participantFilter === null ||
         m.participants.some((p) => p.id === participantFilter)
@@ -46,7 +48,7 @@ export default function HistoryPage() {
           <Search size={13} className="text-muted-foreground shrink-0" />
           <input
             type="search"
-            placeholder="회의 제목, 태그 검색..."
+            placeholder="회의 제목, 태그, 회의실 검색..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
