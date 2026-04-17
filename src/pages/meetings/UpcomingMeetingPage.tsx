@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Clock, Users, Calendar, Video, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Clock, Users, Calendar, Video, DoorOpen } from 'lucide-react'
 import { MEETINGS } from '../../data/mockData'
 import { formatTime } from '../../utils/format'
 
@@ -33,8 +33,6 @@ export default function UpcomingMeetingPage() {
       : diffHours > 0
       ? `${diffHours}시간 ${diffMins}분 후`
       : `${diffMins}분 후`
-
-  const canJoin = diffMs <= 10 * 60 * 1000 // 10분 전부터 입장 가능
 
   const dateLabel = startDate.toLocaleDateString('ko-KR', {
     year: 'numeric',
@@ -100,6 +98,16 @@ export default function UpcomingMeetingPage() {
           </div>
         </div>
 
+        {/* 회의실 */}
+        {meeting.roomName && (
+          <div className="flex items-start gap-3">
+            <DoorOpen size={16} className="text-muted-foreground mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground">{meeting.roomName}</p>
+            </div>
+          </div>
+        )}
+
         {/* 참석자 */}
         <div className="flex items-start gap-3">
           <Users size={16} className="text-muted-foreground mt-0.5 shrink-0" />
@@ -128,52 +136,21 @@ export default function UpcomingMeetingPage() {
         </div>
       </div>
 
-      {/* 아젠다 */}
-      {meeting.agenda && meeting.agenda.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-5 mb-5">
-          <h2 className="text-sm font-semibold text-foreground mb-3">아젠다</h2>
-          <ol className="flex flex-col gap-2">
-            {meeting.agenda.map((item, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-accent-subtle text-accent text-micro font-semibold flex items-center justify-center shrink-0 mt-0.5">
-                  {i + 1}
-                </span>
-                <span className="text-sm text-foreground">{item}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
       {/* 액션 버튼 */}
       <div className="flex flex-col sm:flex-row gap-3">
         <button
-          onClick={() => navigate(`/meetings/${meeting.id}/agenda`)}
-          className="flex items-center justify-center gap-2 flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/50 transition-colors"
-        >
-          아젠다 수정
-          <ChevronRight size={14} />
-        </button>
-
-        <button
           onClick={() => navigate(`/live/${meeting.id}`)}
-          disabled={!canJoin}
-          className={`flex items-center justify-center gap-2 flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
-            canJoin
-              ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-              : 'bg-muted text-muted-foreground cursor-not-allowed'
-          }`}
-          title={canJoin ? '회의 입장' : '회의 시작 10분 전부터 입장 가능합니다'}
+          className="flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
         >
           <Video size={15} />
-          {canJoin ? '회의 입장' : `${countdownLabel} 후 입장 가능`}
+          회의 입장
         </button>
       </div>
 
       {/* 수정 링크 */}
       <div className="mt-4 flex items-center justify-end">
         <Link
-          to={`/meetings/new`}
+          to="/meetings/new"
           className="text-mini text-muted-foreground hover:text-foreground transition-colors"
         >
           회의 정보 수정
