@@ -1,27 +1,43 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Users, Tag, DoorOpen, Search, X, UsersRound } from 'lucide-react'
-import { PARTICIPANTS, DEPARTMENTS } from '../../data/mockData'
-import type { Participant } from '../../types/meeting'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Users, Tag, Search, X, UsersRound } from 'lucide-react'
+import { fetchWorkspaceMembers } from '../../api/workspaceMembers'
+import type { Meeting, Participant } from '../../types/meeting'
+import { DEPARTMENTS } from '../../data/mockData'
 import DatePicker from '../../components/ui/DatePicker'
 import TimePicker from '../../components/ui/TimePicker'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
+function localDateTimeParts(iso: string): { date: string; time: string } {
+  const d = new Date(iso)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}` }
+}
+
 export default function NewMeetingPage() {
   const [title, setTitle] = useState('')
-  const [roomName, setRoomName] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [duration, setDuration] = useState('60')
   const [meetingType, setMeetingType] = useState('')
   const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([])
+  const [allParticipants, setAllParticipants] = useState<Participant[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const searchRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
+  const location = useLocation()
+  const processedDraftKeyRef = useRef<string | null>(null)
+  const editMeetingIdRef = useRef<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
 
   function getBaseUrl() {
     const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
@@ -45,8 +61,48 @@ export default function NewMeetingPage() {
 
   const trimmed = searchQuery.trim().toLowerCase()
 
+  useEffect(() => {
+    let mounted = true
+    fetchWorkspaceMembers(workspaceId)
+      .then((rows) => {
+        if (!mounted) return
+        const palette = ['#6b78f6', '#22c55e', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#8b5cf6', '#64748b']
+        const ui: Participant[] = rows.map((r) => {
+          const initials = r.name.length >= 2 ? r.name.slice(0, 2) : r.name.length === 1 ? r.name : '?'
+          return {
+            id: `u${r.user_id}`,
+            userId: r.user_id,
+            name: r.name,
+            avatarInitials: initials,
+            color: palette[Math.abs(r.user_id) % palette.length],
+            department: r.department ?? undefined,
+          }
+        })
+        setAllParticipants(ui)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setAllParticipants([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) {
+        setWorkspaceId(id)
+        setSelectedParticipants([])
+      }
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
   // 매칭된 개별 직원 (이름 또는 부서명으로 검색)
-  const filteredCandidates = PARTICIPANTS.filter(
+  const filteredCandidates = allParticipants.filter(
     (p) =>
       !selectedParticipants.some((s) => s.id === p.id) &&
       (trimmed === '' ||
@@ -54,9 +110,9 @@ export default function NewMeetingPage() {
         (p.department?.toLowerCase().includes(trimmed) ?? false))
   )
 
-  // 매칭된 부서 그룹 (부서명이 검색어를 포함하거나, 검색어가 비어있을 때 전체 부서)
+  // 부서 선택 UX는 고정 목록(목업) 유지: 데이터만 DB 연결
   const matchedDepartments = DEPARTMENTS.filter(
-    (d) => trimmed === '' || d.name.toLowerCase().includes(trimmed)
+    (d) => trimmed === '' || d.name.toLowerCase().includes(trimmed),
   )
 
   // 드롭다운 아이템 총 수 (부서 그룹 + 개별 직원)
@@ -65,6 +121,29 @@ export default function NewMeetingPage() {
   useEffect(() => {
     setHighlightedIndex(0)
   }, [searchQuery])
+
+  /** 예정 상세 등에서 `state.draftMeeting`으로 넘어온 값으로 폼 채움 */
+  useEffect(() => {
+    const draft = (location.state as { draftMeeting?: Meeting } | null)?.draftMeeting
+    if (!draft) {
+      processedDraftKeyRef.current = null
+      editMeetingIdRef.current = null
+      return
+    }
+    const dedupeKey = `${location.key}|${draft.id}|${draft.startAt}`
+    if (processedDraftKeyRef.current === dedupeKey) return
+    processedDraftKeyRef.current = dedupeKey
+
+    setTitle(draft.title)
+    setMeetingType(draft.meetingType ?? '')
+    editMeetingIdRef.current = draft.id
+    const { date: dStr, time: tStr } = localDateTimeParts(draft.startAt)
+    setDate(dStr)
+    setTime(tStr)
+    setSelectedParticipants(
+      draft.participants?.length ? draft.participants.map((p) => ({ ...p })) : [],
+    )
+  }, [location.key, location.state])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -87,7 +166,7 @@ export default function NewMeetingPage() {
   }
 
   function addDepartment(deptName: string) {
-    const members = PARTICIPANTS.filter((p) => p.department === deptName)
+    const members = allParticipants.filter((p) => p.department === deptName)
     setSelectedParticipants((prev) => {
       const existingIds = new Set(prev.map((p) => p.id))
       const toAdd = members.filter((p) => !existingIds.has(p.id))
@@ -147,9 +226,15 @@ export default function NewMeetingPage() {
       localStorage.getItem('token') ||
       localStorage.getItem('authToken')
 
+    // 참석자 저장은 반드시 DB의 users.id (= userId)만 사용
     const participant_ids = selectedParticipants
-      .map((p) => Number(String(p.id).replace(/\D/g, '')))
-      .filter((n) => Number.isFinite(n))
+      .map((p) => p.userId)
+      .filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
+
+    if (selectedParticipants.length > 0 && participant_ids.length === 0) {
+      alert('선택된 직원에 userId가 없어 참석자를 저장할 수 없습니다.')
+      return
+    }
 
     const body = {
       title,
@@ -159,8 +244,14 @@ export default function NewMeetingPage() {
       sync_google_calendar: false,
     }
 
-    const res = await fetch(`${getBaseUrl()}/api/v1/workspaces/1/meetings`, {
-      method: 'POST',
+    const workspaceId = getCurrentWorkspaceId()
+    const editId = editMeetingIdRef.current
+    const url = editId
+      ? `${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}/${editId}`
+      : `${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}`
+
+    const res = await fetch(url, {
+      method: editId ? 'PATCH' : 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
@@ -171,7 +262,7 @@ export default function NewMeetingPage() {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      alert(`회의 생성 실패 (${res.status})\n${text}`)
+      alert(`${editId ? '회의 수정' : '회의 생성'} 실패 (${res.status})\n${text}`)
       return
     }
 
@@ -199,20 +290,6 @@ export default function NewMeetingPage() {
             placeholder="예: Q2 제품 로드맵 리뷰"
             className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
             required
-          />
-        </div>
-
-        {/* 회의실 이름 */}
-        <div>
-          <label className="flex items-center gap-1.5 text-sm font-medium text-foreground mb-1.5">
-            <DoorOpen size={14} aria-hidden="true" /> 회의실 이름
-          </label>
-          <input
-            type="text"
-            value={roomName}
-            onChange={(e) => setRoomName(e.target.value)}
-            placeholder="예: 대회의실 A, 개발실 B"
-            className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
           />
         </div>
 
@@ -366,7 +443,7 @@ export default function NewMeetingPage() {
                       부서 전체 추가
                     </div>
                     {matchedDepartments.map((dept, idx) => {
-                      const membersInDept = PARTICIPANTS.filter((p) => p.department === dept.name)
+                      const membersInDept = allParticipants.filter((p) => p.department === dept.name)
                       const alreadyAdded = membersInDept.filter((p) =>
                         selectedParticipants.some((s) => s.id === p.id)
                       ).length

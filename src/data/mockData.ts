@@ -9,13 +9,14 @@ export const DEPARTMENTS: Department[] = [
 ]
 
 // ── Participants ──────────────────────────────────────────────────────────
+// userId: seed_mysql `users` id (1–3만 존재). UI용 인물은 더 많아도 API에는 유효한 FK만 보냄.
 export const PARTICIPANTS: Participant[] = [
-  { id: 'p1', name: '김수민', avatarInitials: '수민', color: '#6b78f6', department: '제품팀' },
-  { id: 'p2', name: '이지현', avatarInitials: '지현', color: '#22c55e', department: '디자인팀' },
-  { id: 'p3', name: '박준혁', avatarInitials: '준혁', color: '#f97316', department: '개발팀' },
-  { id: 'p4', name: '최은영', avatarInitials: '은영', color: '#ec4899', department: '마케팅팀' },
-  { id: 'p5', name: '정민준', avatarInitials: '민준', color: '#eab308', department: '개발팀' },
-  { id: 'p6', name: '오서연', avatarInitials: '서연', color: '#14b8a6', department: '마케팅팀' },
+  { id: 'p1', userId: 1, name: '김수민', avatarInitials: '수민', color: '#6b78f6', department: '제품팀' },
+  { id: 'p2', userId: 2, name: '이지현', avatarInitials: '지현', color: '#22c55e', department: '디자인팀' },
+  { id: 'p3', userId: 3, name: '박준혁', avatarInitials: '준혁', color: '#f97316', department: '개발팀' },
+  { id: 'p4', userId: 1, name: '최은영', avatarInitials: '은영', color: '#ec4899', department: '마케팅팀' },
+  { id: 'p5', userId: 2, name: '정민준', avatarInitials: '민준', color: '#eab308', department: '개발팀' },
+  { id: 'p6', userId: 3, name: '오서연', avatarInitials: '서연', color: '#14b8a6', department: '마케팅팀' },
 ]
 
 // ── Meetings ──────────────────────────────────────────────────────────────
@@ -23,7 +24,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm1',
     title: '2025 Q2 제품 로드맵 리뷰',
-    roomName: '대회의실 A',
     status: 'inprogress',
     startAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(), // 25분 전 시작
     participants: [PARTICIPANTS[0], PARTICIPANTS[1], PARTICIPANTS[2], PARTICIPANTS[3]],
@@ -35,7 +35,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm2',
     title: '백엔드 API 설계 논의',
-    roomName: '개발실 B',
     status: 'upcoming',
     startAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2시간 후
     participants: [PARTICIPANTS[0], PARTICIPANTS[2], PARTICIPANTS[4]],
@@ -47,7 +46,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm3',
     title: '마케팅 캠페인 기획',
-    roomName: '소회의실 C',
     status: 'upcoming',
     startAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 내일
     participants: [PARTICIPANTS[1], PARTICIPANTS[3], PARTICIPANTS[5]],
@@ -59,7 +57,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm4',
     title: '주간 스탠드업',
-    roomName: '라운지',
     status: 'upcoming',
     startAt: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
     participants: PARTICIPANTS,
@@ -71,7 +68,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm5',
     title: 'UI/UX 디자인 검토',
-    roomName: '디자인실',
     status: 'completed',
     startAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(),
@@ -84,7 +80,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm6',
     title: '투자자 미팅 준비',
-    roomName: '대회의실 A',
     status: 'completed',
     startAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 + 90 * 60 * 1000).toISOString(),
@@ -97,7 +92,6 @@ export const MEETINGS: Meeting[] = [
   {
     id: 'm7',
     title: '스프린트 플래닝 #12',
-    roomName: '개발실 B',
     status: 'completed',
     startAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),

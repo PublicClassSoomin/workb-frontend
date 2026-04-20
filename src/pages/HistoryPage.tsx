@@ -6,6 +6,9 @@ import Badge from '../components/ui/Badge'
 import { AvatarGroup } from '../components/ui/Avatar'
 import { PARTICIPANTS } from '../data/mockData'
 import { formatDateFull, durationMinutes } from '../utils/format'
+import { persistMeetingSnapshot } from '../utils/meetingRoutes'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
+import type { Meeting } from '../types/meeting'
 
 type BackendStatus = 'scheduled' | 'in_progress' | 'done'
 type UiStatus = 'upcoming' | 'inprogress' | 'completed'
@@ -47,6 +50,22 @@ function pickStartAt(m: MeetingHistoryItem): string {
   )
 }
 
+function historyItemToMeeting(m: MeetingHistoryItem): Meeting {
+  return {
+    id: String(m.id),
+    title: m.title,
+    status: mapStatus(m.status) as Meeting['status'],
+    startAt: pickStartAt(m),
+    endAt: m.ended_at ?? undefined,
+    participants: [],
+    agenda: [],
+    summary: m.summary ?? undefined,
+    actionItemCount: 0,
+    decisionCount: 0,
+    tags: [],
+  }
+}
+
 export default function HistoryPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -59,11 +78,21 @@ export default function HistoryPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
 
   // Keep state in sync when user lands via TopBar (/history?keyword=...)
   useEffect(() => {
     setSearchKeyword(initialKeyword)
   }, [initialKeyword])
+
+  useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) setWorkspaceId(id)
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
 
   // Debounced fetch
   useEffect(() => {
@@ -78,7 +107,7 @@ export default function HistoryPage() {
       setLoading(true)
       setError(null)
 
-      fetch(`${getBaseUrl()}/api/v1/workspaces/1/meetings/history?${qs.toString()}`, {
+      fetch(`${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}/history?${qs.toString()}`, {
         signal: controller.signal,
         headers: { Accept: 'application/json' },
       })
@@ -105,7 +134,7 @@ export default function HistoryPage() {
     }, 400)
 
     return () => clearTimeout(handle)
-  }, [searchKeyword])
+  }, [searchKeyword, workspaceId])
 
   const filtered = useMemo(() => {
     // 현재는 backend가 keyword로 필터링을 수행하므로, 프론트에서는 추가 필터링을 최소화합니다.
@@ -194,7 +223,14 @@ export default function HistoryPage() {
           </div>
 
           {filtered.map((meeting) => (
-            <MeetingRow key={meeting.id} meeting={meeting} onClick={() => navigate(`/meetings/${meeting.id}/notes`)} />
+            <MeetingRow
+              key={meeting.id}
+              meeting={meeting}
+              onClick={() => {
+                persistMeetingSnapshot(historyItemToMeeting(meeting))
+                navigate(`/meetings/${meeting.id}/notes`)
+              }}
+            />
           ))}
         </div>
       )}

@@ -8,6 +8,8 @@ import MiniCalendar from '../components/home/MiniCalendar'
 import type { MeetingStatus } from '../types/meeting'
 import type { Meeting, WeeklyStats } from '../types/meeting'
 import { fetchWorkspaceDashboard } from '../api/dashboard'
+import { persistMeetingSnapshot } from '../utils/meetingRoutes'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
 
 type Tab = MeetingStatus
 
@@ -22,10 +24,20 @@ export default function HomePage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+
+  useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) setWorkspaceId(id)
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
 
   useEffect(() => {
     let mounted = true
-    fetchWorkspaceDashboard(1)
+    fetchWorkspaceDashboard(workspaceId)
       .then(({ meetings, weeklyStats }) => {
         if (!mounted) return
         setMeetings(meetings)
@@ -39,7 +51,7 @@ export default function HomePage() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [workspaceId])
 
   const filtered = useMemo(
     () => meetings.filter((m) => m.status === activeTab),
@@ -172,6 +184,7 @@ function NextMeetingBanner({ meetings }: { meetings: Meeting[] }) {
   return (
     <Link
       to={`/meetings/${next.id}/upcoming`}
+      onClick={() => persistMeetingSnapshot(next)}
       aria-label={`다음 회의: ${next.title} 상세 보기`}
       className="block p-3 rounded-lg bg-accent-subtle border border-accent/20 hover:border-accent/50 hover:bg-accent/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
     >

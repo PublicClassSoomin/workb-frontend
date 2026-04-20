@@ -1,12 +1,25 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Clock, Users, Calendar, Video, DoorOpen } from 'lucide-react'
+import { ArrowLeft, Clock, Users, Calendar, Video, Trash2, Edit2 } from 'lucide-react'
 import { MEETINGS } from '../../data/mockData'
 import { formatTime } from '../../utils/format'
+import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
+import type { Meeting } from '../../types/meeting'
+import { getCurrentWorkspaceId } from '../../utils/workspace'
 
 export default function UpcomingMeetingPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId)
+
+  function getBaseUrl() {
+    const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+    if (!base) throw new Error('VITE_API_BASE_URL is not set')
+    return base.replace(/\/+$/, '')
+  }
+
+  const meeting: Meeting | undefined =
+    MEETINGS.find((m) => m.id === meetingId) ??
+    readMeetingSnapshotForRoute(meetingId) ??
+    undefined
 
   if (!meeting) {
     return (
@@ -98,16 +111,6 @@ export default function UpcomingMeetingPage() {
           </div>
         </div>
 
-        {/* 회의실 */}
-        {meeting.roomName && (
-          <div className="flex items-start gap-3">
-            <DoorOpen size={16} className="text-muted-foreground mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-foreground">{meeting.roomName}</p>
-            </div>
-          </div>
-        )}
-
         {/* 참석자 */}
         <div className="flex items-start gap-3">
           <Users size={16} className="text-muted-foreground mt-0.5 shrink-0" />
@@ -148,13 +151,49 @@ export default function UpcomingMeetingPage() {
       </div>
 
       {/* 수정 링크 */}
-      <div className="mt-4 flex items-center justify-end">
+      <div className="mt-4 flex items-center justify-end gap-3">
         <Link
           to="/meetings/new"
-          className="text-mini text-muted-foreground hover:text-foreground transition-colors"
+          state={{ draftMeeting: meeting }}
+          className="inline-flex items-center gap-1.5 text-mini text-muted-foreground hover:text-foreground transition-colors"
         >
-          회의 정보 수정
+          <Edit2 size={13} aria-hidden="true" />
+          수정
         </Link>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!meetingId) return
+            const ok = window.confirm('회의를 삭제하시겠습니까?')
+            if (!ok) return
+
+            const token =
+              localStorage.getItem('access_token') ||
+              localStorage.getItem('token') ||
+              localStorage.getItem('authToken')
+
+            const workspaceId = getCurrentWorkspaceId()
+            const res = await fetch(`${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}/${meetingId}`, {
+              method: 'DELETE',
+              headers: {
+                Accept: 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+            })
+
+            if (!res.ok) {
+              const text = await res.text().catch(() => '')
+              alert(`회의 삭제 실패 (${res.status})\n${text}`)
+              return
+            }
+
+            navigate('/')
+          }}
+          className="inline-flex items-center gap-1.5 text-mini text-red-600 hover:text-red-700 transition-colors"
+        >
+          <Trash2 size={13} aria-hidden="true" />
+          삭제
+        </button>
       </div>
     </div>
   )

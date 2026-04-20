@@ -2,6 +2,11 @@ import type { Meeting, MeetingStatus, WeeklyStats, Participant } from '../types/
 
 type BackendMeetingStatus = 'scheduled' | 'in_progress' | 'done'
 
+interface BackendDashboardParticipant {
+  user_id: number
+  name: string
+}
+
 interface BackendMeetingItem {
   id: number
   title: string
@@ -9,6 +14,8 @@ interface BackendMeetingItem {
   scheduled_at?: string | null
   started_at?: string | null
   ended_at?: string | null
+  meeting_type?: string | null
+  participants?: BackendDashboardParticipant[]
 }
 
 interface BackendDashboardResponse {
@@ -41,6 +48,31 @@ const DEFAULT_TOP_PARTICIPANT: Participant = {
   color: '#64748b',
 }
 
+const DASHBOARD_PARTICIPANT_COLORS = [
+  '#6b78f6',
+  '#22c55e',
+  '#f97316',
+  '#ec4899',
+  '#eab308',
+  '#14b8a6',
+  '#8b5cf6',
+  '#64748b',
+]
+
+function participantFromDashboard(p: BackendDashboardParticipant): Participant {
+  const color =
+    DASHBOARD_PARTICIPANT_COLORS[Math.abs(p.user_id) % DASHBOARD_PARTICIPANT_COLORS.length]
+  const initials =
+    p.name.length >= 2 ? p.name.slice(0, 2) : p.name.length === 1 ? p.name : '?'
+  return {
+    id: `u${p.user_id}`,
+    userId: p.user_id,
+    name: p.name,
+    avatarInitials: initials,
+    color,
+  }
+}
+
 function getBaseUrl() {
   const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
   if (!base) throw new Error('VITE_API_BASE_URL is not set')
@@ -63,13 +95,15 @@ function pickStartAt(m: BackendMeetingItem): string {
 }
 
 function toMeeting(m: BackendMeetingItem): Meeting {
+  const apiParticipants = m.participants ?? []
   return {
     id: String(m.id),
     title: m.title,
+    meetingType: m.meeting_type ?? undefined,
     status: mapStatus(m.status),
     startAt: pickStartAt(m),
     endAt: m.ended_at ?? undefined,
-    participants: [],
+    participants: apiParticipants.map(participantFromDashboard),
     agenda: [],
     summary: undefined,
     actionItemCount: 0,

@@ -1,6 +1,8 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Edit2, Share2, CheckSquare, AlertCircle, MessageSquare, Clock, Sparkles } from 'lucide-react'
 import { MEETINGS } from '../../data/mockData'
+import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
+import type { Meeting } from '../../types/meeting'
 import { COMPLETED_TRANSCRIPT } from '../../data/mockTranscript'
 import { AvatarGroup } from '../../components/ui/Avatar'
 import { formatDateFull } from '../../utils/format'
@@ -25,7 +27,10 @@ const ACTION_ITEMS_NOTES = [
 export default function NotesPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[4] // m5 = UI/UX 디자인 검토
+  const meeting: Meeting =
+    MEETINGS.find((m) => m.id === meetingId) ??
+    readMeetingSnapshotForRoute(meetingId) ??
+    MEETINGS[4] // 목업 폴백 (m5)
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
