@@ -7,10 +7,13 @@ import {
   connectJira,
   connectKakao,
   disconnectIntegration,
+  getSlackChannels,
+  saveSlackChannel,
   type IntegrationItem,
   type ServiceName,
   type OAuthService,
   type JiraConnectBody,
+  type SlackChannel,
 } from '../../api/integrations'
 
 const WORKSPACE_ID = 1 // TODO: auth context에서 가져오기
@@ -34,10 +37,24 @@ export default function OnboardingIntegrationsPage() {
     domain: '', email: '', api_token: '', project_key: '',
   })
   const [kakaoApiKey, setKakaoApiKey] = useState('')
+  const [slackChannels, setSlackChannels] = useState<SlackChannel[]>([])
+  const [channelLoading, setChannelLoading] = useState(false)
   const navigate = useNavigate()
 
   const refreshList = () =>
-    getIntegrations(WORKSPACE_ID).then((res) => setIntegrations(res.integrations))
+    getIntegrations(WORKSPACE_ID).then((res) => {
+      setIntegrations(res.integrations)
+      const slack = res.integrations.find((i) => i.service === 'slack')
+      if (slack?.is_connected) {
+        setChannelLoading(true)
+        getSlackChannels(WORKSPACE_ID)
+          .then((r) => setSlackChannels(r.channels))
+          .catch(() => setSlackChannels([]))
+          .finally(() => setChannelLoading(false))
+      } else {
+        setSlackChannels([])
+      }
+    })
 
   useEffect(() => {
     // OAuth 콜백 후 리다이렉트 파라미터 처리
@@ -102,32 +119,56 @@ export default function OnboardingIntegrationsPage() {
       <div className="flex flex-col gap-3 mb-6">
         {integrations.map((item) => {
           const meta = SERVICE_META[item.service]
+          const isSlack = item.service === 'slack'
           return (
-            <div key={item.service} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
-              <span className="text-2xl">{meta.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{meta.name}</p>
-                <p className="text-mini text-muted-foreground">{meta.description}</p>
-              </div>
-              {item.is_connected ? (
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-mini font-medium">
-                    <Check size={11} /> 연결됨
-                  </span>
-                  <button
-                    onClick={() => handleDisconnect(item.service)}
-                    className="text-mini text-muted-foreground hover:text-foreground"
-                  >
-                    해제
-                  </button>
+            <div key={item.service} className="p-3 rounded-lg border border-border bg-card">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{meta.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{meta.name}</p>
+                  <p className="text-mini text-muted-foreground">{meta.description}</p>
                 </div>
-              ) : (
-                <button
-                  onClick={() => handleConnect(item.service)}
-                  className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
-                >
-                  {meta.buttonLabel}
-                </button>
+                {item.is_connected ? (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-mini font-medium">
+                      <Check size={11} /> 연결됨
+                    </span>
+                    <button
+                      onClick={() => handleDisconnect(item.service)}
+                      className="text-mini text-muted-foreground hover:text-foreground"
+                    >
+                      해제
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleConnect(item.service)}
+                    className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
+                  >
+                    {meta.buttonLabel}
+                  </button>
+                )}
+              </div>
+
+              {/* Slack 채널 선택 */}
+              {isSlack && item.is_connected && (
+                <div className="mt-2.5 pt-2.5 border-t border-border">
+                  <p className="text-mini text-muted-foreground mb-1">기본 전송 채널</p>
+                  {channelLoading ? (
+                    <p className="text-mini text-muted-foreground">채널 불러오는 중...</p>
+                  ) : (
+                    <select
+                      onChange={(e) => saveSlackChannel(WORKSPACE_ID, e.target.value).catch(console.error)}
+                      defaultValue={item.selected_channel_id ?? ""}
+                      className="w-full h-8 px-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="" disabled>채널 선택</option>
+                      {slackChannels.map((c) => (
+                        <option key={c.id} value={c.id}>#{c.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               )}
             </div>
           )
