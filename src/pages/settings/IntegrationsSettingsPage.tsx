@@ -6,10 +6,13 @@ import {
   connectJira,
   connectKakao,
   disconnectIntegration,
+  getSlackChannels,
+  saveSlackChannel,
   type IntegrationItem,
   type ServiceName,
   type OAuthService,
   type JiraConnectBody,
+  type SlackChannel,
 } from '../../api/integrations'
 
 const WORKSPACE_ID = 1 // TODO: auth context에서 가져오기
@@ -35,6 +38,10 @@ export default function IntegrationsSettingsPage() {
   const [modal, setModal] = useState<ModalState>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  // Slack 채널 상태
+  const [slackChannels, setSlackChannels] = useState<SlackChannel[]>([])
+  const [channelLoading, setChannelLoading] = useState(false)
+
   // JIRA 입력 상태
   const [jiraForm, setJiraForm] = useState<JiraConnectBody>({
     domain: '', email: '', api_token: '', project_key: '',
@@ -43,7 +50,19 @@ export default function IntegrationsSettingsPage() {
   const [kakaoApiKey, setKakaoApiKey] = useState('')
 
   const refreshList = () =>
-    getIntegrations(WORKSPACE_ID).then((res) => setIntegrations(res.integrations))
+    getIntegrations(WORKSPACE_ID).then((res) => {
+      setIntegrations(res.integrations)
+      const slack = res.integrations.find((i) => i.service === 'slack')
+      if (slack?.is_connected) {
+        setChannelLoading(true)
+        getSlackChannels(WORKSPACE_ID)
+          .then((r) => setSlackChannels(r.channels))
+          .catch(() => setSlackChannels([]))
+          .finally(() => setChannelLoading(false))
+      } else {
+        setSlackChannels([])
+      }
+    })
 
   useEffect(() => {
     // OAuth 콜백 후 리다이렉트 파라미터 처리
@@ -123,6 +142,10 @@ export default function IntegrationsSettingsPage() {
             item={item}
             onConnect={() => handleConnect(item.service)}
             onDisconnect={() => handleDisconnect(item.service)}
+            slackChannels={item.service === 'slack' ? slackChannels : undefined}
+            slackSelectedChannelId={item.service === 'slack' ? item.selected_channel_id : undefined}
+            channelLoading={item.service === 'slack' ? channelLoading : false}
+            onChannelChange={(channelId) => saveSlackChannel(WORKSPACE_ID, channelId).catch(console.error)}
           />
         ))}
       </div>
@@ -219,10 +242,18 @@ function IntegrationCard({
   item,
   onConnect,
   onDisconnect,
+  slackChannels,
+  slackSelectedChannelId,
+  channelLoading,
+  onChannelChange,
 }: {
   item: IntegrationItem
   onConnect: () => void
   onDisconnect: () => void
+  slackChannels?: SlackChannel[]
+  slackSelectedChannelId?: string
+  channelLoading?: boolean
+  onChannelChange?: (channelId: string) => void
 }) {
   const meta = SERVICE_META[item.service]
   const isConnected = item.is_connected
@@ -241,6 +272,28 @@ function IntegrationCard({
           <p className="text-mini text-muted-foreground">{meta.description}</p>
         </div>
       </div>
+
+      {/* Slack 채널 선택 */}
+      {item.service === 'slack' && isConnected && (
+        <div className="mb-3 pt-3 border-t border-border">
+          <p className="text-mini text-muted-foreground mb-1.5">기본 전송 채널</p>
+          {channelLoading ? (
+            <p className="text-mini text-muted-foreground">채널 불러오는 중...</p>
+          ) : (
+            <select
+              onChange={(e) => onChannelChange?.(e.target.value)}
+              defaultValue={slackSelectedChannelId ?? ""}
+              className="w-full h-8 px-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="" disabled>채널 선택</option>
+              {slackChannels?.map((c) => (
+                <option key={c.id} value={c.id}>#{c.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 justify-end">
         {isConnected ? (
           <button
