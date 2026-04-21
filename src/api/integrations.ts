@@ -10,6 +10,7 @@ export interface IntegrationItem {
   service: ServiceName
   is_connected: boolean
   updated_at: string
+  selected_channel_id?: string
 }
 
 export interface IntegrationListResponse {
@@ -69,5 +70,24 @@ export function testIntegration(workspaceId: number, service: ServiceName) {
   return apiFetch<{ success: boolean; message: string }>(
     `/integrations/workspaces/${workspaceId}/${service}/test`,
     { method: 'POST' }
+  )
+}
+
+// --- Slack 채널 ---
+export interface SlackChannel {
+  id: string
+  name: string
+}
+
+export function getSlackChannels(workspaceId: number) {
+  return apiFetch<{ channels: SlackChannel[] }>(
+    `/integrations/workspaces/${workspaceId}/slack/channels`
+  )
+}
+
+export function saveSlackChannel(workspaceId: number, channelId: string) {
+  return apiFetch<{ status: string }>(
+    `/integrations/slack/channel?workspace_id=${workspaceId}`,
+    { method: 'PATCH', body: JSON.stringify({ channel_id: channelId }) }
   )
 }

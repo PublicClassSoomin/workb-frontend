@@ -1,38 +1,60 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ExternalLink, Calendar, Sparkles, Check } from 'lucide-react'
 import { MEETINGS } from '../../data/mockData'
-import { INTEGRATIONS } from '../../data/mockIntegrations'
+import { getIntegrations, type IntegrationItem, type ServiceName } from '../../api/integrations'
+import { exportSlack } from '../../api/actions'
+
+const WORKSPACE_ID = 1
 
 export default function ExportPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
   const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[4]
   const [exported, setExported] = useState<Record<string, boolean>>({})
+  const [exporting, setExporting] = useState<Record<string, boolean>>({})
+  const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
   const [scheduleSuggestion] = useState({
     title: '후속 회의: UI/UX 디자인 2차 검토',
     suggested: '2026년 4월 16일 (목) 오전 10:00',
     participants: ['김수민', '이지현', '최은영'],
   })
 
-  function handleExport(target: string) {
-    // TODO: export to external service
-    console.log('TODO: export to', target, meetingId)
-    setExported((prev) => ({ ...prev, [target]: true }))
-    alert(`${target}으로 내보냈습니다. (TODO: 연동 필요)`)
+  useEffect(() => {
+    getIntegrations(WORKSPACE_ID)
+      .then((res) => setIntegrations(res.integrations))
+      .catch(console.error)
+  }, [])
+
+  function isConnected(service: ServiceName) {
+    return integrations.find((i) => i.service === service)?.is_connected ?? false
+  }
+
+  async function handleExport(targetId: string) {
+    if (!meetingId) return
+    setExporting((prev) => ({ ...prev, [targetId]: true }))
+    try {
+      if (targetId === 'slack') {
+        await exportSlack(meetingId, { include_action_items: true })
+      }
+      // TODO: notion, jira 구현 후 추가
+      setExported((prev) => ({ ...prev, [targetId]: true }))
+    } catch (e) {
+      alert('내보내기 실패. 다시 시도해주세요.')
+    } finally {
+      setExporting((prev) => ({ ...prev, [targetId]: false }))
+    }
   }
 
   function handleSchedule() {
-    // TODO: create next meeting in calendar
-    console.log('TODO: schedule next meeting', scheduleSuggestion)
     alert('캘린더에 일정이 등록되었습니다. (TODO: Google Calendar 연동)')
   }
 
   const exportTargets = [
-    { id: 'jira', label: 'JIRA 이슈 생성', desc: 'WBS 태스크를 JIRA 이슈로 자동 생성', icon: '🔵', connected: INTEGRATIONS.find((i) => i.service === 'jira')?.is_connected ?? false },
-    { id: 'excel', label: 'Excel 내보내기', desc: '회의록·WBS를 엑셀 파일로 다운로드', icon: '📊', connected: true },
-    { id: 'notion', label: 'Notion 내보내기', desc: 'Notion 페이지로 자동 저장', icon: '📝', connected: INTEGRATIONS.find((i) => i.service === 'notion')?.is_connected ?? false },
-    { id: 'slack', label: 'Slack 공유', desc: '선택한 채널에 회의 요약 공유', icon: '💬', connected: INTEGRATIONS.find((i) => i.service === 'slack')?.is_connected ?? false },
+    { id: 'jira',   label: 'JIRA 이슈 생성',   desc: 'WBS 태스크를 JIRA 이슈로 자동 생성', icon: '🔵', connected: isConnected('jira') },
+    { id: 'excel',  label: 'Excel 내보내기',    desc: '회의록·WBS를 엑셀 파일로 다운로드',  icon: '📊', connected: true },
+    { id: 'notion', label: 'Notion 내보내기',   desc: 'Notion 페이지로 자동 저장',          icon: '📝', connected: isConnected('notion') },
+    { id: 'slack',  label: 'Slack 공유',        desc: '선택한 채널에 회의 요약 공유',        icon: '💬', connected: isConnected('slack') },
   ]
 
   return (
@@ -67,10 +89,11 @@ export default function ExportPage() {
               </span>
             ) : (
               <button
-                onClick={() => handleExport(target.label)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
+                onClick={() => handleExport(target.id)}
+                disabled={exporting[target.id]}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors disabled:opacity-50"
               >
-                <ExternalLink size={12} /> 내보내기
+                <ExternalLink size={12} /> {exporting[target.id] ? '전송 중...' : '내보내기'}
               </button>
             )}
           </div>
