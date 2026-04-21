@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Copy, Check, UserPlus, Trash2 } from 'lucide-react'
+import { getCurrentWorkspaceId } from '../../api/client'
+import { getWorkspace } from '../../api/workspace'
 
 const ROLES = ['관리자', '멤버', '뷰어'] as const
 type Role = typeof ROLES[number]
@@ -12,10 +14,37 @@ interface InviteRow {
 }
 
 export default function OnboardingInvitePage() {
-  const [inviteCode] = useState('WORKB-' + Math.random().toString(36).slice(2, 8).toUpperCase())
+  const [inviteCode, setInviteCode] = useState('')
   const [copied, setCopied] = useState(false)
   const [rows, setRows] = useState<InviteRow[]>([{ id: '1', email: '', role: '멤버' }])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
+  const workspaceId = getCurrentWorkspaceId()
+
+  useEffect(() => {
+    let active = true
+
+    async function loadInviteCode() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const workspace = await getWorkspace(workspaceId)
+        if (active) setInviteCode(workspace.invite_code)
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : '초대코드를 불러오지 못했습니다.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadInviteCode()
+
+    return () => {
+      active = false
+    }
+  }, [workspaceId])
 
   function handleCopy() {
     navigator.clipboard.writeText(inviteCode).catch(() => {})
@@ -36,10 +65,16 @@ export default function OnboardingInvitePage() {
   }
 
   function handleFinish() {
-    // TODO: send invitations
-    console.log('TODO: send invites', rows)
     localStorage.setItem('workb-auth-mock', 'true')
     navigate('/')
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-md">
+        <p className="text-sm text-muted-foreground">초대코드를 불러오는 중입니다...</p>
+      </div>
+    )
   }
 
   return (
@@ -59,6 +94,7 @@ export default function OnboardingInvitePage() {
 
       <h1 className="text-2xl font-bold text-foreground mb-1">멤버 초대</h1>
       <p className="text-sm text-muted-foreground mb-6">초대코드를 공유하거나 이메일로 직접 초대하세요.</p>
+      {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
       {/* Invite code */}
       <div className="p-3 rounded-lg border border-border bg-muted/30 mb-5">
