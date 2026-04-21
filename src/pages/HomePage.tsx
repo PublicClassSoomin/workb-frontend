@@ -160,9 +160,9 @@ export default function HomePage() {
 
 function EmptyState({ status }: { status: Tab }) {
   const msg: Record<Tab, string> = {
-    inprogress: '현재 진행 중인 회의가 없습니다.',
-    upcoming:   '예정된 회의가 없습니다. 새 회의를 예약해 보세요.',
-    completed:  '완료된 회의가 없습니다.',
+    inprogress: '진행 중인 회의가 없습니다.',
+    upcoming: '금주에 예정된 회의가 없습니다',
+    completed: '금주에 완료된 회의가 없습니다',
   }
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-2">

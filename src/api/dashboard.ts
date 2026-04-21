@@ -112,9 +112,27 @@ function toMeeting(m: BackendMeetingItem): Meeting {
   }
 }
 
+const EMPTY_DASHBOARD_RAW: BackendDashboardResponse = {
+  meetings: { in_progress: [], scheduled: [], done: [] },
+  weekly_summary: { total_count: 0, total_duration_min: 0, summary_cards: [] },
+  pending_action_items: [],
+  next_meeting_suggestion: null,
+}
+
+const EMPTY_WEEKLY_STATS: WeeklyStats = {
+  totalMeetings: 0,
+  totalMinutes: 0,
+  actionItemsTotal: 0,
+  actionItemsDone: 0,
+  topParticipant: DEFAULT_TOP_PARTICIPANT,
+}
+
 export async function fetchWorkspaceDashboard(workspaceId: number) {
   const url = `${getBaseUrl()}/api/v1/workspaces/${workspaceId}/dashboard`
   const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  if (res.status === 404) {
+    return { raw: EMPTY_DASHBOARD_RAW, meetings: [] as Meeting[], weeklyStats: EMPTY_WEEKLY_STATS }
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`Dashboard API failed (${res.status}): ${text}`)
