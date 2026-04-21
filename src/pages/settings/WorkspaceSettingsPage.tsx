@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { Save } from 'lucide-react'
 import { useAccentColor } from '../../hooks/useAccentColor'
 import { useFontScale } from '../../context/FontScaleContext'
+import { getCurrentWorkspaceId } from '../../api/client'
+import { getWorkspace, updateWorkspace } from '../../api/workspace'
 
 const SUMMARY_STYLES = ['간결형 (결정사항·액션아이템 중심)', '상세형 (전문 포함)', '발표형 (PPT 구조)', '커스텀']
 const LANGUAGES = ['한국어', 'English', '日本語']
@@ -15,9 +17,14 @@ const FONT_SCALE_OPTIONS: { id: 'sm' | 'md' | 'lg'; label: string; hint: string 
 
 export default function WorkspaceSettingsPage() {
   const [teamName, setTeamName] = useState('Workb 팀')
+  const [industry, setIndustry] = useState('')
   const [language, setLanguage] = useState('한국어')
   const [summaryStyle, setSummaryStyle] = useState(SUMMARY_STYLES[0])
+  const [logoUrl, setLogoUrl] = useState('/brand/workb-logo.png')
   const [saved, setSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const {
     accentPreset,
     setAccentPreset,
@@ -26,26 +33,82 @@ export default function WorkspaceSettingsPage() {
     setAccentAsMain,
   } = useAccentColor()
   const { fontScale, setFontScale } = useFontScale()
+  const workspaceId = getCurrentWorkspaceId()
 
-  function handleSave(e: React.FormEvent) {
+  useEffect(() => {
+    let active = true
+
+    async function loadWorkspace() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const workspace = await getWorkspace(workspaceId)
+        if (!active) return
+        setTeamName(workspace.name)
+        setIndustry(workspace.industry ?? '')
+        setLanguage(workspace.default_language ?? '한국어')
+        setSummaryStyle(workspace.summary_style ?? SUMMARY_STYLES[0])
+        setLogoUrl(workspace.logo_url ?? '/brand/workb-logo.png')
+      } catch (err) {
+        if (!active) return
+        setError(err instanceof Error ? err.message : '워크스페이스 정보를 불러오지 못했습니다.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadWorkspace()
+
+    return () => {
+      active = false
+    }
+  }, [workspaceId])
+
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    // TODO: save workspace settings
-    console.log('TODO: save workspace settings', {
-      teamName,
-      language,
-      summaryStyle,
-      accentPreset,
-      accentAsMain,
-      fontScale,
-    })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setSaving(true)
+    setError('')
+
+    try {
+      const workspace = await updateWorkspace(workspaceId, {
+        name: teamName,
+        industry: industry || null,
+        default_language: language,
+        summary_style: summaryStyle,
+        logo_url: logoUrl || null,
+      })
+      setTeamName(workspace.name)
+      setIndustry(workspace.industry ?? '')
+      setLanguage(workspace.default_language ?? '한국어')
+      setSummaryStyle(workspace.summary_style ?? SUMMARY_STYLES[0])
+      setLogoUrl(workspace.logo_url ?? '/brand/workb-logo.png')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '워크스페이스 설정 저장에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-6">
+        <p className="text-sm text-muted-foreground">워크스페이스 설정을 불러오는 중입니다...</p>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-xl mx-auto px-4 sm:px-6 py-6">
       <h1 className="text-xl font-semibold text-foreground mb-1">워크스페이스 설정</h1>
       <p className="text-sm text-muted-foreground mb-6">팀 정보와 기본 설정을 관리합니다.</p>
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSave} className="space-y-5">
         {/* Team name */}
@@ -59,19 +122,30 @@ export default function WorkspaceSettingsPage() {
           />
         </div>
 
+        {/* Industry */}
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1.5">업종</label>
+          <input
+            type="text"
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            placeholder="예: IT, 교육, 스타트업"
+            className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          />
+        </div>
+
         {/* Logo */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">팀 로고</label>
+          <label className="block text-sm font-medium text-foreground mb-1.5">팀 로고 URL</label>
           <div className="flex items-center gap-3">
-            <img src="/brand/workb-logo.png" alt="Workb 팀 로고" className="w-12 h-12 rounded-xl object-cover" />
-            <button
-              type="button"
-              onClick={() => console.log('TODO: upload logo')}
-              className="h-9 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors"
-            >
-              이미지 업로드
-            </button>
-            <p className="text-mini text-muted-foreground">PNG, SVG · 권장 512×512</p>
+            <img src={logoUrl || '/brand/workb-logo.png'} alt="Workb 팀 로고" className="w-12 h-12 rounded-xl object-cover" />
+            <input
+              type="url"
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="https://example.com/logo.png"
+              className="flex-1 h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+            />
           </div>
         </div>
 
@@ -224,9 +298,10 @@ export default function WorkspaceSettingsPage() {
 
         <button
           type="submit"
-          className="flex items-center gap-1.5 h-10 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+          disabled={saving}
+          className="flex items-center gap-1.5 h-10 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <Save size={14} /> {saved ? '저장됨 ✓' : '변경사항 저장'}
+          <Save size={14} /> {saving ? '저장 중...' : saved ? '저장됨 ✓' : '변경사항 저장'}
         </button>
       </form>
     </div>
