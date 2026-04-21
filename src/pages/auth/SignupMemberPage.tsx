@@ -1,21 +1,42 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { login, signupMember } from '../../api/auth'
+import { setCurrentWorkspaceId } from '../../api/client'
+import { validateInviteCode } from '../../api/workspace'
 
 export default function SignupMemberPage() {
   const [inviteCode, setInviteCode] = useState('')
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!inviteCode || !username || !password) { setError('모든 필드를 입력해주세요.'); return }
+    if (!inviteCode || !email || !name || !password) { setError('모든 필드를 입력해주세요.'); return }
     if (inviteCode.length < 6) { setError('초대코드를 확인해주세요.'); return }
-    // TODO: verify invite code and register member
-    console.log('TODO: signup member', { inviteCode, username, password })
-    localStorage.setItem('workb-auth-mock', 'true')
-    navigate('/')
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const invite = await validateInviteCode(inviteCode)
+      setCurrentWorkspaceId(invite.workspace_id)
+      await signupMember({
+        invite_code: inviteCode,
+        email,
+        password,
+        name,
+      })
+      await login({ email, password })
+      navigate('/')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '멤버 회원가입에 실패했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -37,12 +58,22 @@ export default function SignupMemberPage() {
           <p className="text-mini text-muted-foreground mt-1">관리자로부터 전달받은 초대코드를 입력하세요.</p>
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">아이디</label>
+          <label className="block text-sm font-medium text-foreground mb-1">이메일</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="your@email.com"
+            className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">이름</label>
           <input
             type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="사용할 아이디"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="홍길동"
             className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
           />
         </div>
@@ -57,8 +88,12 @@ export default function SignupMemberPage() {
           />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
-        <button type="submit" className="h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors mt-1">
-          회원가입 완료
+        <button
+          type="submit"
+          disabled={loading}
+          className="h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors mt-1 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {loading ? '가입 중...' : '회원가입 완료'}
         </button>
       </form>
 

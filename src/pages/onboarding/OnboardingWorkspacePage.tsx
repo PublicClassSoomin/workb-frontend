@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Copy, Check } from 'lucide-react'
+import { getCurrentWorkspaceId } from '../../api/client'
+import { getWorkspace, updateWorkspace } from '../../api/workspace'
 
 const INDUSTRIES = ['IT/소프트웨어', '금융/핀테크', '마케팅/광고', '제조업', '의료/헬스케어', '교육', '기타']
 const LANGUAGES = ['한국어', 'English', '日本語', '中文']
@@ -9,9 +11,42 @@ export default function OnboardingWorkspacePage() {
   const [teamName, setTeamName] = useState('')
   const [industry, setIndustry] = useState('')
   const [language, setLanguage] = useState('한국어')
-  const [inviteCode] = useState('WORKB-' + Math.random().toString(36).slice(2, 8).toUpperCase())
+  const [inviteCode, setInviteCode] = useState('')
   const [copied, setCopied] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
+  const workspaceId = getCurrentWorkspaceId()
+
+  useEffect(() => {
+    let active = true
+
+    async function loadWorkspace() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const workspace = await getWorkspace(workspaceId)
+        if (!active) return
+        setTeamName(workspace.name)
+        setIndustry(workspace.industry ?? '')
+        setLanguage(workspace.default_language ?? '한국어')
+        setInviteCode(workspace.invite_code)
+      } catch (err) {
+        if (!active) return
+        setError(err instanceof Error ? err.message : '워크스페이스 정보를 불러오지 못했습니다.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadWorkspace()
+
+    return () => {
+      active = false
+    }
+  }, [workspaceId])
 
   function handleCopy() {
     navigator.clipboard.writeText(inviteCode).catch(() => {})
@@ -19,11 +54,31 @@ export default function OnboardingWorkspacePage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    // TODO: create workspace
-    console.log('TODO: create workspace', { teamName, industry, language, inviteCode })
-    navigate('/onboarding/integrations')
+    setSaving(true)
+    setError('')
+
+    try {
+      await updateWorkspace(workspaceId, {
+        name: teamName,
+        industry: industry || null,
+        default_language: language,
+      })
+      navigate('/onboarding/integrations')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '워크스페이스 설정에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-md">
+        <p className="text-sm text-muted-foreground">워크스페이스 정보를 불러오는 중입니다...</p>
+      </div>
+    )
   }
 
   return (
@@ -43,6 +98,7 @@ export default function OnboardingWorkspacePage() {
 
       <h1 className="text-2xl font-bold text-foreground mb-1">워크스페이스 만들기</h1>
       <p className="text-sm text-muted-foreground mb-6">팀 정보를 입력하고 초대코드를 멤버에게 공유하세요.</p>
+      {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
@@ -102,9 +158,10 @@ export default function OnboardingWorkspacePage() {
 
         <button
           type="submit"
-          className="h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors mt-2"
+          disabled={saving}
+          className="h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          다음 → 연동 설정
+          {saving ? '저장 중...' : '다음 → 연동 설정'}
         </button>
       </form>
     </div>
