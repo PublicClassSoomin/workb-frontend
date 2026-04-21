@@ -38,10 +38,10 @@ import LivePage from './pages/live/LivePage'
 // Settings pages
 import WorkspaceSettingsPage from './pages/settings/WorkspaceSettingsPage'
 import MembersSettingsPage from './pages/settings/MembersSettingsPage'
+import DepartmentsSettingsPage from './pages/settings/DepartmentsSettingsPage'
 import VoiceSettingsPage from './pages/settings/VoiceSettingsPage'
 import IntegrationsSettingsPage from './pages/settings/IntegrationsSettingsPage'
 import DeviceSettingsPage from './pages/settings/DeviceSettingsPage'
-import DepartmentsSettingsPage from './pages/settings/DepartmentsSettingsPage'
 
 export default function App() {
   return (
