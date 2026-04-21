@@ -1,6 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { UserPlus, Copy, Check, MoreVertical, Shield } from 'lucide-react'
-import { PARTICIPANTS } from '../../data/mockData'
+import { getCurrentWorkspaceId } from '../../api/client'
+import {
+  getDepartments,
+  getWorkspace,
+  getWorkspaceMembers,
+  issueInviteCode,
+  updateMemberDepartment,
+  updateMemberRole,
+  type Department,
+  type UserRole,
+  type WorkspaceMember,
+} from '../../api/workspace'
 
 type Role = '관리자' | '멤버' | '뷰어'
 
@@ -10,15 +21,69 @@ const ROLE_STYLES: Record<Role, string> = {
   뷰어: 'bg-muted text-muted-foreground',
 }
 
+const ROLE_TO_BACKEND: Record<Role, UserRole> = {
+  관리자: 'admin',
+  멤버: 'member',
+  뷰어: 'viewer',
+}
+
+const BACKEND_TO_ROLE: Record<UserRole, Role> = {
+  admin: '관리자',
+  member: '멤버',
+  viewer: '뷰어',
+}
+
+const AVATAR_COLORS = ['#6b78f6', '#22c55e', '#f97316', '#ec4899', '#eab308', '#14b8a6']
+
+function getAvatarColor(userId: number): string {
+  return AVATAR_COLORS[userId % AVATAR_COLORS.length]
+}
+
+function getInitial(name: string): string {
+  return name.trim().charAt(0) || '?'
+}
+
 export default function MembersSettingsPage() {
-  const [members, setMembers] = useState(PARTICIPANTS.map((p, i) => ({
-    ...p,
-    email: `${p.avatarInitials.toLowerCase()}@workb.io`,
-    role: (i === 0 ? '관리자' : '멤버') as Role,
-    joined: '2026-01-15',
-  })))
-  const [inviteCode] = useState('WORKB-M2K9XA')
+  const [members, setMembers] = useState<WorkspaceMember[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [inviteCode, setInviteCode] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [issuingInvite, setIssuingInvite] = useState(false)
+  const workspaceId = getCurrentWorkspaceId()
+
+  useEffect(() => {
+    let active = true
+
+    async function loadMembers() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const [workspace, memberList, departmentList] = await Promise.all([
+          getWorkspace(workspaceId),
+          getWorkspaceMembers(workspaceId),
+          getDepartments(workspaceId),
+        ])
+        if (!active) return
+        setInviteCode(workspace.invite_code)
+        setMembers(memberList)
+        setDepartments(departmentList)
+      } catch (err) {
+        if (!active) return
+        setError(err instanceof Error ? err.message : '멤버 정보를 불러오지 못했습니다.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadMembers()
+
+    return () => {
+      active = false
+    }
+  }, [workspaceId])
 
   function handleCopy() {
     navigator.clipboard.writeText(inviteCode).catch(() => {})
@@ -26,10 +91,53 @@ export default function MembersSettingsPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function changeRole(id: string, role: Role) {
-    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m))
-    // TODO: update member role
-    console.log('TODO: update role', { id, role })
+  async function changeRole(userId: number, role: Role) {
+    const backendRole = ROLE_TO_BACKEND[role]
+    setError('')
+
+    try {
+      await updateMemberRole(workspaceId, userId, backendRole)
+      setMembers((prev) => prev.map((m) => m.user_id === userId ? { ...m, role: backendRole } : m))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '역할 변경에 실패했습니다.')
+    }
+  }
+
+  async function changeDepartment(userId: number, departmentId: number | null) {
+    setError('')
+
+    try {
+      const updated = await updateMemberDepartment(workspaceId, userId, departmentId)
+      setMembers((prev) => prev.map((m) => (
+        m.user_id === userId
+          ? { ...m, department_id: updated.department_id, department: updated.department }
+          : m
+      )))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '부서 변경에 실패했습니다.')
+    }
+  }
+
+  async function handleIssueInviteCode() {
+    setIssuingInvite(true)
+    setError('')
+
+    try {
+      const issued = await issueInviteCode(workspaceId)
+      setInviteCode(issued.invite_code)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '초대코드 발급에 실패했습니다.')
+    } finally {
+      setIssuingInvite(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+        <p className="text-sm text-muted-foreground">멤버 정보를 불러오는 중입니다...</p>
+      </div>
+    )
   }
 
   return (
@@ -40,6 +148,12 @@ export default function MembersSettingsPage() {
           <p className="text-sm text-muted-foreground mt-0.5">{members.length}명의 멤버</p>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      )}
 
       {/* Invite code */}
       <div className="p-3.5 rounded-lg border border-border bg-muted/20 mb-5">
@@ -57,10 +171,11 @@ export default function MembersSettingsPage() {
               {copied ? '복사됨' : '복사'}
             </button>
             <button
-              onClick={() => console.log('TODO: generate new invite code')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+              onClick={handleIssueInviteCode}
+              disabled={issuingInvite}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <UserPlus size={13} /> 새 코드 발급
+              <UserPlus size={13} /> {issuingInvite ? '발급 중...' : '새 코드 발급'}
             </button>
           </div>
         </div>
@@ -69,32 +184,34 @@ export default function MembersSettingsPage() {
       {/* Member table */}
       <div className="rounded-lg border border-border overflow-hidden bg-card">
         {/* Table header — desktop only */}
-        <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto] gap-3 px-4 py-2 bg-muted/40 border-b border-border text-micro font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 px-4 py-2 bg-muted/40 border-b border-border text-micro font-medium text-muted-foreground uppercase tracking-wide">
           <span>멤버</span>
           <span>역할</span>
+          <span>부서</span>
           <span>가입일</span>
           <span></span>
         </div>
         {members.map((member) => (
-          <div key={member.id} className="px-4 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+          <div key={member.user_id} className="px-4 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
             {/* Mobile layout */}
             <div className="flex items-center justify-between gap-2 md:hidden">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-                  style={{ backgroundColor: member.color }}
+                  style={{ backgroundColor: getAvatarColor(member.user_id) }}
                 >
-                  {member.avatarInitials[0]}
+                  {getInitial(member.name)}
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{member.name}</p>
                   <p className="text-mini text-muted-foreground truncate">{member.email}</p>
+                  <p className="text-micro text-muted-foreground truncate">{member.department ?? '부서 없음'}</p>
                 </div>
               </div>
               <div className="relative shrink-0">
                 <select
-                  value={member.role}
-                  onChange={(e) => changeRole(member.id, e.target.value as Role)}
+                  value={BACKEND_TO_ROLE[member.role]}
+                  onChange={(e) => changeRole(member.user_id, e.target.value as Role)}
                   className="appearance-none h-7 px-2 pr-5 rounded border border-border bg-card text-mini outline-none cursor-pointer hover:border-foreground transition-colors"
                   aria-label="역할 변경"
                 >
@@ -107,13 +224,13 @@ export default function MembersSettingsPage() {
             </div>
 
             {/* Desktop layout */}
-            <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center">
+            <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 items-center">
               <div className="flex items-center gap-2.5">
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-                  style={{ backgroundColor: member.color }}
+                  style={{ backgroundColor: getAvatarColor(member.user_id) }}
                 >
-                  {member.avatarInitials[0]}
+                  {getInitial(member.name)}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">{member.name}</p>
@@ -121,16 +238,32 @@ export default function MembersSettingsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                {member.role === '관리자' && <Shield size={12} className="text-accent" />}
-                <span className={`px-2 py-0.5 rounded-full text-mini font-medium ${ROLE_STYLES[member.role]}`}>
-                  {member.role}
+                {member.role === 'admin' && <Shield size={12} className="text-accent" />}
+                <span className={`px-2 py-0.5 rounded-full text-mini font-medium ${ROLE_STYLES[BACKEND_TO_ROLE[member.role]]}`}>
+                  {BACKEND_TO_ROLE[member.role]}
                 </span>
               </div>
-              <span className="text-mini text-muted-foreground">{member.joined}</span>
               <div className="relative">
                 <select
-                  value={member.role}
-                  onChange={(e) => changeRole(member.id, e.target.value as Role)}
+                  value={member.department_id ?? ''}
+                  onChange={(e) => changeDepartment(member.user_id, e.target.value ? Number(e.target.value) : null)}
+                  className="appearance-none h-7 px-2 pr-5 rounded border border-border bg-card text-mini outline-none cursor-pointer hover:border-foreground transition-colors min-w-[7rem]"
+                  aria-label="부서 변경"
+                >
+                  <option value="">부서 없음</option>
+                  {departments.map((department) => (
+                    <option key={department.department_id} value={department.department_id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+                <MoreVertical size={12} className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+              <span className="text-mini text-muted-foreground">-</span>
+              <div className="relative">
+                <select
+                  value={BACKEND_TO_ROLE[member.role]}
+                  onChange={(e) => changeRole(member.user_id, e.target.value as Role)}
                   className="appearance-none h-7 px-2 pr-5 rounded border border-border bg-card text-mini outline-none cursor-pointer hover:border-foreground transition-colors"
                   aria-label="역할 변경"
                 >

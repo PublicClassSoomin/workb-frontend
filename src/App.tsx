@@ -38,6 +38,7 @@ import LiveSpeakersPage from './pages/live/LiveSpeakersPage'
 // Settings pages
 import WorkspaceSettingsPage from './pages/settings/WorkspaceSettingsPage'
 import MembersSettingsPage from './pages/settings/MembersSettingsPage'
+import DepartmentsSettingsPage from './pages/settings/DepartmentsSettingsPage'
 import VoiceSettingsPage from './pages/settings/VoiceSettingsPage'
 import IntegrationsSettingsPage from './pages/settings/IntegrationsSettingsPage'
 import DeviceSettingsPage from './pages/settings/DeviceSettingsPage'
@@ -91,6 +92,7 @@ export default function App() {
           {/* Settings */}
           <Route path="settings/workspace" element={<WorkspaceSettingsPage />} />
           <Route path="settings/members" element={<MembersSettingsPage />} />
+          <Route path="settings/departments" element={<DepartmentsSettingsPage />} />
           <Route path="settings/voice" element={<VoiceSettingsPage />} />
           <Route path="settings/integrations" element={<IntegrationsSettingsPage />} />
           <Route path="settings/device" element={<DeviceSettingsPage />} />

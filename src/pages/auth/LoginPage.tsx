@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
+import { login } from '../../api/auth'
 
 type Tab = 'admin' | 'member'
 
@@ -9,18 +10,34 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = typeof location.state === 'object'
+    && location.state
+    && 'from' in location.state
+    && typeof location.state.from === 'string'
+    ? location.state.from
+    : '/'
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!email || !password) {
       setError('이메일과 비밀번호를 입력해주세요.')
       return
     }
-    // TODO: authenticate user
-    console.log('TODO: login', { tab, email, password })
-    localStorage.setItem('workb-auth-mock', 'true')
-    navigate('/')
+
+    setLoading(true)
+    setError('')
+
+    try {
+      await login({ email, password })
+      navigate(returnTo, { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '로그인에 실패했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -76,9 +93,10 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          className="h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors mt-1"
+          disabled={loading}
+          className="h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors mt-1 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          로그인
+          {loading ? '로그인 중...' : '로그인'}
         </button>
 
         {/* Social login */}

@@ -19,6 +19,7 @@ import {
   Search,
   Link2,
   Gauge,
+  Building2,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -66,6 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/settings/workspace', label: '워크스페이스', icon: LayoutGrid },
       { to: '/settings/members', label: '멤버 · 권한', icon: Users },
+      { to: '/settings/departments', label: '부서 관리', icon: Building2 },
       { to: '/settings/voice', label: '화자 등록', icon: Mic },
       { to: '/settings/integrations', label: '연동 관리', icon: Link2 },
       { to: '/settings/device', label: '장비 설정', icon: Gauge },

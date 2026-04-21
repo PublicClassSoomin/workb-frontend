@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Plus, Sun, Moon, Bell, Monitor, Menu } from 'lucide-react'
+import { Search, Plus, Sun, Moon, Bell, Monitor, Menu, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import type { ThemePreference } from '../../hooks/useThemePreference'
 
@@ -9,6 +9,7 @@ interface TopBarProps {
   resolvedDark: boolean
   onCycleTheme: () => void
   onMenuOpen?: () => void
+  onLogout?: () => void
 }
 
 const THEME_CYCLE_HINT: Record<ThemePreference, string> = {
@@ -22,6 +23,7 @@ export default function TopBar({
   resolvedDark,
   onCycleTheme,
   onMenuOpen,
+  onLogout,
 }: TopBarProps) {
   const [searchFocused, setSearchFocused] = useState(false)
 
@@ -102,6 +104,16 @@ export default function TopBar({
           ) : (
             <Sun size={15} aria-hidden />
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          aria-label="로그아웃"
+          title="로그아웃"
+        >
+          <LogOut size={15} aria-hidden />
         </button>
       </div>
     </header>

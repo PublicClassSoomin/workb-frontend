@@ -1,24 +1,73 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
+import { getCurrentWorkspaceId } from '../../api/client'
+import {
+  connectIntegration,
+  disconnectIntegration,
+  getWorkspaceIntegrations,
+} from '../../api/integration'
 import { INTEGRATIONS } from '../../data/mockIntegrations'
 import type { IntegrationStatus } from '../../types/integrations'
 
 export default function OnboardingIntegrationsPage() {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus>>(
-    Object.fromEntries(INTEGRATIONS.map((i) => [i.id, i.status]))
+    Object.fromEntries(INTEGRATIONS.map((i) => [i.id, 'disconnected' as IntegrationStatus]))
   )
+  const [loading, setLoading] = useState(true)
+  const [busyService, setBusyService] = useState<string | null>(null)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
+  const workspaceId = getCurrentWorkspaceId()
 
-  function handleConnect(id: string) {
-    // TODO: OAuth connect
-    console.log('TODO: connect integration', id)
-    setStatuses((prev) => ({ ...prev, [id]: 'connected' }))
-  }
+  useEffect(() => {
+    let active = true
 
-  function handleDisconnect(id: string) {
-    // TODO: disconnect
-    setStatuses((prev) => ({ ...prev, [id]: 'disconnected' }))
+    async function loadIntegrations() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const integrations = await getWorkspaceIntegrations(workspaceId)
+        if (!active) return
+        setStatuses(Object.fromEntries(
+          integrations.map((integration) => [
+            integration.service.replace('_', '-'),
+            integration.is_connected ? 'connected' : 'disconnected',
+          ]),
+        ))
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : '연동 상태를 불러오지 못했습니다.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadIntegrations()
+
+    return () => {
+      active = false
+    }
+  }, [workspaceId])
+
+  async function toggleIntegration(serviceId: string, nextConnected: boolean) {
+    setBusyService(serviceId)
+    setError('')
+
+    try {
+      const response = nextConnected
+        ? await connectIntegration(workspaceId, serviceId)
+        : await disconnectIntegration(workspaceId, serviceId)
+
+      setStatuses((prev) => ({
+        ...prev,
+        [response.service.replace('_', '-')]: response.is_connected ? 'connected' : 'disconnected',
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '연동 상태 변경에 실패했습니다.')
+    } finally {
+      setBusyService(null)
+    }
   }
 
   return (
@@ -38,8 +87,10 @@ export default function OnboardingIntegrationsPage() {
 
       <h1 className="text-2xl font-bold text-foreground mb-1">외부 서비스 연동</h1>
       <p className="text-sm text-muted-foreground mb-6">나중에도 설정에서 변경할 수 있습니다.</p>
+      {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
       <div className="flex flex-col gap-3 mb-6">
+        {loading && <p className="text-sm text-muted-foreground">연동 상태를 불러오는 중입니다...</p>}
         {INTEGRATIONS.map((integration) => {
           const status = statuses[integration.id]
           return (
@@ -55,18 +106,22 @@ export default function OnboardingIntegrationsPage() {
                     <Check size={11} /> 연결됨
                   </span>
                   <button
-                    onClick={() => handleDisconnect(integration.id)}
-                    className="text-mini text-muted-foreground hover:text-foreground"
+                    type="button"
+                    onClick={() => toggleIntegration(integration.id, false)}
+                    disabled={busyService === integration.id}
+                    className="text-mini text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    해제
+                    {busyService === integration.id ? '처리 중...' : '해제'}
                   </button>
                 </div>
               ) : (
                 <button
-                  onClick={() => handleConnect(integration.id)}
-                  className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
+                  type="button"
+                  onClick={() => toggleIntegration(integration.id, true)}
+                  disabled={busyService === integration.id}
+                  className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  연결
+                  {busyService === integration.id ? '처리 중...' : '연결'}
                 </button>
               )}
             </div>
