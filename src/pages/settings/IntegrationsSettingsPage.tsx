@@ -1,177 +1,278 @@
 import { useEffect, useState } from 'react'
-import { Check, RefreshCw, Unlink } from 'lucide-react'
+import { Check, Unlink } from 'lucide-react'
 import { getCurrentWorkspaceId } from '../../api/client'
 import {
-  connectIntegration,
+  getIntegrations,
+  getOAuthUrl,
+  connectJira,
+  connectKakao,
   disconnectIntegration,
-  getWorkspaceIntegrations,
-} from '../../api/integration'
-import { INTEGRATIONS } from '../../data/mockIntegrations'
-import type { Integration } from '../../types/integrations'
+  getSlackChannels,
+  saveSlackChannel,
+  type IntegrationItem,
+  type ServiceName,
+  type OAuthService,
+  type JiraConnectBody,
+  type SlackChannel,
+} from '../../api/integrations'
+
+const OAUTH_SERVICES: OAuthService[] = ['google_calendar', 'slack', 'notion']
+
+const SERVICE_META: Record<ServiceName, { name: string; description: string; icon: string; buttonLabel: string }> = {
+  jira: { name: 'JIRA', description: '이슈 자동 생성 및 WBS 매핑', icon: '🔵', buttonLabel: 'API Key 입력' },
+  slack: { name: 'Slack', description: '회의 요약 및 액션 아이템 알림', icon: '💬', buttonLabel: 'Slack에 추가' },
+  notion: { name: 'Notion', description: '회의록 자동 내보내기', icon: '📝', buttonLabel: 'Notion 연결' },
+  google_calendar: { name: 'Google Calendar', description: '회의 일정 연동 및 자동 등록', icon: '📅', buttonLabel: 'Google 연결' },
+  kakao: { name: '카카오톡 알림', description: '회의 요약·액션 아이템 알림 발송', icon: '💛', buttonLabel: 'API Key 입력' },
+}
+
+type ModalState = { type: 'jira' } | { type: 'kakao' } | null
 
 export default function IntegrationsSettingsPage() {
-  const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS.map((integration) => ({
-    ...integration,
-    status: 'disconnected',
-    connectedAs: undefined,
-    lastSynced: undefined,
-  })))
+  const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [busyService, setBusyService] = useState<string | null>(null)
+  const [modal, setModal] = useState<ModalState>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [slackChannels, setSlackChannels] = useState<SlackChannel[]>([])
+  const [channelLoading, setChannelLoading] = useState(false)
+  const [jiraForm, setJiraForm] = useState<JiraConnectBody>({
+    domain: '',
+    email: '',
+    api_token: '',
+    project_key: '',
+  })
+  const [kakaoApiKey, setKakaoApiKey] = useState('')
   const workspaceId = getCurrentWorkspaceId()
 
+  async function refreshList() {
+    setError('')
+    const response = await getIntegrations(workspaceId)
+    setIntegrations(response.integrations)
+
+    const slack = response.integrations.find((integration) => integration.service === 'slack')
+    if (slack?.is_connected) {
+      setChannelLoading(true)
+      getSlackChannels(workspaceId)
+        .then((result) => setSlackChannels(result.channels))
+        .catch(() => setSlackChannels([]))
+        .finally(() => setChannelLoading(false))
+    } else {
+      setSlackChannels([])
+    }
+  }
+
   useEffect(() => {
-    let active = true
+    const params = new URLSearchParams(window.location.search)
+    const status = params.get('status')
+    const service = params.get('service') as ServiceName | null
 
-    async function loadIntegrations() {
-      setLoading(true)
-      setError('')
-
-      try {
-        const integrationStatuses = await getWorkspaceIntegrations(workspaceId)
-        const statusMap = new Map(
-          integrationStatuses.map((item) => [
-            item.service.replace('_', '-'),
-            item,
-          ]),
-        )
-
-        if (!active) return
-        setIntegrations(INTEGRATIONS.map((integration) => {
-          const backend = statusMap.get(integration.id)
-          return {
-            ...integration,
-            status: backend?.is_connected ? 'connected' : 'disconnected',
-            lastSynced: backend?.created_at,
-            connectedAs: backend?.is_connected ? integration.connectedAs : undefined,
-          }
-        }))
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : '연동 상태를 불러오지 못했습니다.')
-      } finally {
-        if (active) setLoading(false)
-      }
+    if (status === 'connected' && service) {
+      setSuccessMessage(`${SERVICE_META[service]?.name ?? service} 연동이 완료되었습니다!`)
+      window.history.replaceState({}, '', '/settings/integrations')
+      setTimeout(() => setSuccessMessage(null), 4000)
+    } else if (status === 'error') {
+      setError('연동 중 오류가 발생했습니다. 다시 시도해주세요.')
+      window.history.replaceState({}, '', '/settings/integrations')
     }
 
-    loadIntegrations()
-
-    return () => {
-      active = false
-    }
+    refreshList()
+      .catch((err) => setError(err instanceof Error ? err.message : '연동 상태를 불러오지 못했습니다.'))
+      .finally(() => setLoading(false))
   }, [workspaceId])
 
-  async function changeConnection(serviceId: string, connected: boolean) {
-    setBusyService(serviceId)
-    setError('')
-
+  async function handleConnect(service: ServiceName) {
     try {
-      const response = connected
-        ? await connectIntegration(workspaceId, serviceId)
-        : await disconnectIntegration(workspaceId, serviceId)
-
-      setIntegrations((prev) => prev.map((integration) => (
-        integration.id === response.service.replace('_', '-')
-          ? {
-              ...integration,
-              status: response.is_connected ? 'connected' : 'disconnected',
-              lastSynced: response.created_at,
-              connectedAs: response.is_connected ? integration.connectedAs ?? '개발 테스트 계정' : undefined,
-            }
-          : integration
-      )))
+      if (OAUTH_SERVICES.includes(service as OAuthService)) {
+        const { auth_url } = await getOAuthUrl(service as OAuthService, workspaceId)
+        window.location.href = auth_url
+      } else if (service === 'jira') {
+        setJiraForm({ domain: '', email: '', api_token: '', project_key: '' })
+        setModal({ type: 'jira' })
+      } else if (service === 'kakao') {
+        setKakaoApiKey('')
+        setModal({ type: 'kakao' })
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '연동 상태 변경에 실패했습니다.')
-    } finally {
-      setBusyService(null)
+      setError(err instanceof Error ? err.message : '연동 요청에 실패했습니다.')
     }
+  }
+
+  async function handleDisconnect(service: ServiceName) {
+    try {
+      await disconnectIntegration(workspaceId, service)
+      await refreshList()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '연동 해제에 실패했습니다.')
+    }
+  }
+
+  async function handleJiraSubmit() {
+    if (!jiraForm.domain || !jiraForm.email || !jiraForm.api_token || !jiraForm.project_key) return
+    await connectJira(workspaceId, jiraForm)
+    await refreshList()
+    setModal(null)
+    setSuccessMessage('JIRA 연동이 완료되었습니다!')
+    setTimeout(() => setSuccessMessage(null), 4000)
+  }
+
+  async function handleKakaoSubmit() {
+    if (!kakaoApiKey.trim()) return
+    await connectKakao(workspaceId, kakaoApiKey.trim())
+    await refreshList()
+    setModal(null)
+    setSuccessMessage('카카오톡 알림 연동이 완료되었습니다!')
+    setTimeout(() => setSuccessMessage(null), 4000)
+  }
+
+  if (loading) {
+    return <div className="p-6 text-sm text-muted-foreground">불러오는 중...</div>
   }
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
       <h1 className="text-xl font-semibold text-foreground mb-1">연동 관리</h1>
       <p className="text-sm text-muted-foreground mb-6">외부 서비스와의 연동 상태를 관리합니다.</p>
+
+      {successMessage && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 text-sm">
+          {successMessage}
+        </div>
+      )}
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
           {error}
         </div>
       )}
 
       <div className="flex flex-col gap-4">
-        {loading && <p className="text-sm text-muted-foreground">연동 상태를 불러오는 중입니다...</p>}
-        {integrations.map((integration) => (
+        {integrations.map((item) => (
           <IntegrationCard
-            key={integration.id}
-            integration={integration}
-            busy={busyService === integration.id}
-            onConnect={() => changeConnection(integration.id, true)}
-            onDisconnect={() => changeConnection(integration.id, false)}
+            key={item.service}
+            item={item}
+            onConnect={() => handleConnect(item.service)}
+            onDisconnect={() => handleDisconnect(item.service)}
+            slackChannels={item.service === 'slack' ? slackChannels : undefined}
+            slackSelectedChannelId={item.service === 'slack' ? item.selected_channel_id : undefined}
+            channelLoading={item.service === 'slack' ? channelLoading : false}
+            onChannelChange={(channelId) => saveSlackChannel(workspaceId, channelId).catch(console.error)}
           />
         ))}
       </div>
+
+      {modal?.type === 'jira' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
+            <h2 className="text-base font-semibold text-foreground mb-1">JIRA 연결</h2>
+            <p className="text-mini text-muted-foreground mb-4">Atlassian 계정 정보를 입력하세요.</p>
+            <div className="flex flex-col gap-2 mb-4">
+              <input type="text" placeholder="도메인 (예: company.atlassian.net)" value={jiraForm.domain} onChange={(event) => setJiraForm({ ...jiraForm, domain: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+              <input type="email" placeholder="이메일 (Atlassian 계정)" value={jiraForm.email} onChange={(event) => setJiraForm({ ...jiraForm, email: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+              <input type="password" placeholder="API Token" value={jiraForm.api_token} onChange={(event) => setJiraForm({ ...jiraForm, api_token: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+              <input type="text" placeholder="프로젝트 키 (예: PROJ)" value={jiraForm.project_key} onChange={(event) => setJiraForm({ ...jiraForm, project_key: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <button onClick={() => setModal(null)} className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
+                취소
+              </button>
+              <button onClick={handleJiraSubmit} className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
+                <Check size={13} /> 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal?.type === 'kakao' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
+            <h2 className="text-base font-semibold text-foreground mb-1">카카오톡 알림 연결</h2>
+            <p className="text-mini text-muted-foreground mb-4">카카오 REST API Key를 입력하세요.</p>
+            <input type="password" placeholder="REST API Key" value={kakaoApiKey} onChange={(event) => setKakaoApiKey(event.target.value)} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-accent" />
+            <div className="flex items-center gap-2 justify-end">
+              <button onClick={() => setModal(null)} className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
+                취소
+              </button>
+              <button onClick={handleKakaoSubmit} className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
+                <Check size={13} /> 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function IntegrationCard({
-  integration,
-  busy,
+  item,
   onConnect,
   onDisconnect,
+  slackChannels,
+  slackSelectedChannelId,
+  channelLoading,
+  onChannelChange,
 }: {
-  integration: Integration
-  busy: boolean
+  item: IntegrationItem
   onConnect: () => void
   onDisconnect: () => void
+  slackChannels?: SlackChannel[]
+  slackSelectedChannelId?: string
+  channelLoading?: boolean
+  onChannelChange?: (channelId: string) => void
 }) {
-  const isConnected = integration.status === 'connected'
+  const meta = SERVICE_META[item.service]
+  const isConnected = item.is_connected
 
   return (
     <div className="p-4 rounded-xl border border-border bg-card">
       <div className="flex items-start gap-3 mb-3">
-        <span className="text-3xl">{integration.icon}</span>
+        <span className="text-3xl">{meta.icon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <h3 className="text-sm font-semibold text-foreground">{integration.name}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{meta.name}</h3>
             <span className={`px-2 py-0.5 rounded-full text-micro font-medium ${isConnected ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
               {isConnected ? '연결됨' : '연결 안됨'}
             </span>
           </div>
-          <p className="text-mini text-muted-foreground">{integration.description}</p>
-          {isConnected && integration.connectedAs && (
-            <p className="text-mini text-muted-foreground mt-1">계정: {integration.connectedAs}</p>
-          )}
-          {isConnected && integration.lastSynced && (
-            <p className="text-mini text-muted-foreground">
-              마지막 동기화: {new Date(integration.lastSynced).toLocaleString('ko-KR')}
-            </p>
-          )}
+          <p className="text-mini text-muted-foreground">{meta.description}</p>
         </div>
       </div>
+
+      {item.service === 'slack' && isConnected && (
+        <div className="mb-3 pt-3 border-t border-border">
+          <p className="text-mini text-muted-foreground mb-1.5">기본 전송 채널</p>
+          {channelLoading ? (
+            <p className="text-mini text-muted-foreground">채널 불러오는 중...</p>
+          ) : (
+            <select
+              onChange={(event) => onChannelChange?.(event.target.value)}
+              defaultValue={slackSelectedChannelId ?? ''}
+              className="w-full h-8 px-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="" disabled>채널 선택</option>
+              {slackChannels?.map((channel) => (
+                <option key={channel.id} value={channel.id}>#{channel.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 justify-end">
         {isConnected ? (
-          <>
-            <button
-              disabled
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm text-muted-foreground cursor-not-allowed"
-            >
-              <RefreshCw size={13} /> 토큰 갱신
-            </button>
-            <button
-              onClick={onDisconnect}
-              disabled={busy}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Unlink size={13} /> {busy ? '처리 중...' : '연결 해제'}
-            </button>
-          </>
+          <button
+            onClick={onDisconnect}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-red-200 dark:border-red-800 text-red-500 text-sm hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          >
+            <Unlink size={13} /> 연결 해제
+          </button>
         ) : (
           <button
             onClick={onConnect}
-            disabled={busy}
-            className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
           >
-            <Check size={13} /> {busy ? '처리 중...' : '연결'}
+            <Check size={13} /> {meta.buttonLabel}
           </button>
         )}
       </div>

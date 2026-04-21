@@ -1,4 +1,7 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/v1'
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL
+  ?? import.meta.env.VITE_API_URL
+  ?? 'http://127.0.0.1:8000/api/v1'
 
 interface TokenResponse {
   access_token: string
@@ -162,4 +165,11 @@ export async function apiRequest<T>(
   }
 
   return response.json() as Promise<T>
+}
+
+export function apiFetch<T>(
+  path: string,
+  options?: ApiRequestOptions,
+): Promise<T> {
+  return apiRequest<T>(path, options)
 }
