@@ -69,7 +69,7 @@ const MOCK_SPEAKERS = [
 
 // ─────────────────────────────────────────────────────────────────────────
 export default function LivePage() {
-  const { meetingId = 'm1' } = useParams()
+  const { meetingId = '2' } = useParams()
   const navigate = useNavigate()
   const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[0]
 

@@ -30,6 +30,7 @@ export default function TopBar({
 }: TopBarProps) {
   const navigate = useNavigate()
   const [searchFocused, setSearchFocused] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
@@ -45,6 +46,13 @@ export default function TopBar({
     document.addEventListener('mousedown', handleDown)
     return () => document.removeEventListener('mousedown', handleDown)
   }, [notifOpen])
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const q = searchQuery.trim()
+    if (q) navigate(`/history?keyword=${encodeURIComponent(q)}`)
+  }
 
   return (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-11 border-b border-border bg-background shrink-0">
@@ -71,6 +79,9 @@ export default function TopBar({
         <input
           type="search"
           placeholder="회의 검색..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setSearchFocused(false)}
           className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"

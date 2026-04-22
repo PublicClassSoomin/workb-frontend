@@ -1,7 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login, signupAdmin } from '../../api/auth'
-import { setCurrentWorkspaceId } from '../../api/client'
+import { ApiError, setCurrentWorkspaceId } from '../../api/client'
+
+function validateAdminSignupForm(name: string, email: string, password: string): string | null {
+  const n = name.trim()
+  const em = email.trim()
+  if (!n || !em || !password) return '모든 필드를 입력해주세요.'
+  if (n.length < 2 || n.length > 30) return '이름은 2자 이상 30자 이하여야 합니다.'
+  if (password.length < 8 || password.length > 64) return '비밀번호는 8자 이상 64자 이하여야 합니다.'
+  if (!/[a-zA-Z]/.test(password)) return '비밀번호에는 영문자가 최소 1개 이상 포함되어야 합니다.'
+  if (!/\d/.test(password)) return '비밀번호에는 숫자가 최소 1개 이상 포함되어야 합니다.'
+  return null
+}
 
 export default function SignupAdminPage() {
   const [name, setName] = useState('')
@@ -14,20 +25,21 @@ export default function SignupAdminPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name || !email || !password) { setError('모든 필드를 입력해주세요.'); return }
+    const validation = validateAdminSignupForm(name, email, password)
+    if (validation) { setError(validation); return }
     if (password !== confirm) { setError('비밀번호가 일치하지 않습니다.'); return }
 
     setLoading(true)
     setError('')
 
     try {
-      const signup = await signupAdmin({ name, email, password })
+      const signup = await signupAdmin({ name: name.trim(), email: email.trim(), password })
       setCurrentWorkspaceId(signup.workspace_id)
       localStorage.setItem('workb-invite-code', signup.invite_code)
-      await login({ email, password })
+      await login({ email: email.trim(), password })
       navigate('/onboarding/workspace')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '관리자 회원가입에 실패했습니다.')
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : '관리자 회원가입에 실패했습니다.')
     } finally {
       setLoading(false)
     }
