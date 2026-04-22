@@ -12,11 +12,7 @@ interface WorkspaceListResponse {
   message?: string
 }
 
-function getBaseUrl() {
-  const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
-  if (!base) throw new Error('VITE_API_BASE_URL is not set')
-  return base.replace(/\/+$/, '')
-}
+import { getApiV1BaseUrl } from './baseUrl'
 
 export async function fetchMyWorkspaces(): Promise<WorkspaceListItem[]> {
   const token =
@@ -24,7 +20,7 @@ export async function fetchMyWorkspaces(): Promise<WorkspaceListItem[]> {
     localStorage.getItem('token') ||
     localStorage.getItem('authToken')
 
-  const res = await fetch(`${getBaseUrl()}/api/v1/workspaces`, {
+  const res = await fetch(`${getApiV1BaseUrl()}/workspaces`, {
     headers: {
       Accept: 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

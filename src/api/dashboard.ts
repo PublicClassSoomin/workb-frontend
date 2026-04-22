@@ -1,4 +1,5 @@
 import type { Meeting, MeetingStatus, WeeklyStats, Participant } from '../types/meeting'
+import { getApiV1BaseUrl } from './baseUrl'
 
 type BackendMeetingStatus = 'scheduled' | 'in_progress' | 'done'
 
@@ -73,12 +74,6 @@ function participantFromDashboard(p: BackendDashboardParticipant): Participant {
   }
 }
 
-function getBaseUrl() {
-  const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
-  if (!base) throw new Error('VITE_API_BASE_URL is not set')
-  return base.replace(/\/+$/, '')
-}
-
 function mapStatus(s: BackendMeetingStatus): MeetingStatus {
   if (s === 'in_progress') return 'inprogress'
   if (s === 'scheduled') return 'upcoming'
@@ -113,7 +108,7 @@ function toMeeting(m: BackendMeetingItem): Meeting {
 }
 
 export async function fetchWorkspaceDashboard(workspaceId: number) {
-  const url = `${getBaseUrl()}/api/v1/workspaces/${workspaceId}/dashboard`
+  const url = `${getApiV1BaseUrl()}/workspaces/${workspaceId}/dashboard`
   const res = await fetch(url, { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
