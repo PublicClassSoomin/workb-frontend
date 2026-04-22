@@ -7,6 +7,7 @@ import { DEPARTMENTS } from '../../data/mockData'
 import DatePicker from '../../components/ui/DatePicker'
 import TimePicker from '../../components/ui/TimePicker'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
+import { getApiV1BaseUrl } from '../../api/baseUrl'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
@@ -38,12 +39,6 @@ export default function NewMeetingPage() {
   const processedDraftKeyRef = useRef<string | null>(null)
   const editMeetingIdRef = useRef<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
-
-  function getBaseUrl() {
-    const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
-    if (!base) throw new Error('VITE_API_BASE_URL is not set')
-    return base.replace(/\/+$/, '')
-  }
 
   function todayYmd() {
     const d = new Date()
@@ -247,8 +242,8 @@ export default function NewMeetingPage() {
     const workspaceId = getCurrentWorkspaceId()
     const editId = editMeetingIdRef.current
     const url = editId
-      ? `${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}/${editId}`
-      : `${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}`
+      ? `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/${editId}`
+      : `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}`
 
     const res = await fetch(url, {
       method: editId ? 'PATCH' : 'POST',

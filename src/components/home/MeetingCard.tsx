@@ -13,14 +13,14 @@ interface MeetingCardProps {
 
 /** 상태에 따라 이동할 라우트를 결정 */
 function getMeetingRoute(meeting: Meeting): string {
-  if (meeting.status === 'inprogress') return '/live'
+  if (meeting.status === 'inprogress') return `/live/${meeting.id}`
   if (meeting.status === 'upcoming') return `/meetings/${meeting.id}/upcoming`
   return `/meetings/${meeting.id}/notes`
 }
 
 function goToMeeting(navigate: ReturnType<typeof useNavigate>, meeting: Meeting) {
   const route = getMeetingRoute(meeting)
-  if (route !== '/live') persistMeetingSnapshot(meeting)
+  if (!route.startsWith('/live/')) persistMeetingSnapshot(meeting)
   navigate(route)
 }
 

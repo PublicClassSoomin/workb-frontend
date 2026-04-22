@@ -10,7 +10,7 @@ const WORKSPACE_ID = 1
 export default function ExportPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[4]
+  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS.find((m) => m.status === 'completed') ?? MEETINGS[0]
   const [exported, setExported] = useState<Record<string, boolean>>({})
   const [exporting, setExporting] = useState<Record<string, boolean>>({})
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
@@ -51,17 +51,10 @@ export default function ExportPage() {
   }
 
   const exportTargets = [
-<<<<<<< HEAD
-    { id: 'jira', label: 'JIRA 이슈 생성', desc: 'WBS 태스크를 JIRA 이슈로 자동 생성', icon: '🔵', connected: INTEGRATIONS.find((i) => i.service === 'jira')?.is_connected ?? false },
-    { id: 'excel', label: 'Excel 내보내기', desc: '회의록·WBS를 엑셀 파일로 다운로드', icon: '📊', connected: true },
-    { id: 'notion', label: 'Notion 내보내기', desc: 'Notion 페이지로 자동 저장', icon: '📝', connected: INTEGRATIONS.find((i) => i.service === 'notion')?.is_connected ?? false },
-    { id: 'slack', label: 'Slack 공유', desc: '선택한 채널에 회의 요약 공유', icon: '💬', connected: INTEGRATIONS.find((i) => i.service === 'slack')?.is_connected ?? false },
-=======
     { id: 'jira',   label: 'JIRA 이슈 생성',   desc: 'WBS 태스크를 JIRA 이슈로 자동 생성', icon: '🔵', connected: isConnected('jira') },
     { id: 'excel',  label: 'Excel 내보내기',    desc: '회의록·WBS를 엑셀 파일로 다운로드',  icon: '📊', connected: true },
     { id: 'notion', label: 'Notion 내보내기',   desc: 'Notion 페이지로 자동 저장',          icon: '📝', connected: isConnected('notion') },
     { id: 'slack',  label: 'Slack 공유',        desc: '선택한 채널에 회의 요약 공유',        icon: '💬', connected: isConnected('slack') },
->>>>>>> main
   ]
 
   return (

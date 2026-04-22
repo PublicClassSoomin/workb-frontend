@@ -9,6 +9,7 @@ import { formatDateFull, durationMinutes } from '../utils/format'
 import { persistMeetingSnapshot } from '../utils/meetingRoutes'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
 import type { Meeting } from '../types/meeting'
+import { getApiV1BaseUrl } from '../api/baseUrl'
 
 type BackendStatus = 'scheduled' | 'in_progress' | 'done'
 type UiStatus = 'upcoming' | 'inprogress' | 'completed'
@@ -27,12 +28,6 @@ interface MeetingHistoryResponse {
   total: number
   page: number
   meetings: MeetingHistoryItem[]
-}
-
-function getBaseUrl() {
-  const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
-  if (!base) throw new Error('VITE_API_BASE_URL is not set')
-  return base.replace(/\/+$/, '')
 }
 
 function mapStatus(s: BackendStatus): UiStatus {
@@ -107,7 +102,7 @@ export default function HistoryPage() {
       setLoading(true)
       setError(null)
 
-      fetch(`${getBaseUrl()}/api/v1/meetings/workspaces/${workspaceId}/history?${qs.toString()}`, {
+      fetch(`${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/history?${qs.toString()}`, {
         signal: controller.signal,
         headers: { Accept: 'application/json' },
       })

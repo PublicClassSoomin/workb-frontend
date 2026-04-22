@@ -34,21 +34,6 @@ export default function TopBar({
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
-<<<<<<< HEAD
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return
-    e.preventDefault()
-    const q = searchQuery.trim()
-    if (q) {
-      navigate(`/history?keyword=${encodeURIComponent(q)}`)
-    } else {
-      navigate('/history')
-    }
-  }
-
-  // 알림 패널 외부 클릭으로 닫기
-=======
->>>>>>> main
   useEffect(() => {
     if (!notifOpen) return
 
@@ -61,6 +46,13 @@ export default function TopBar({
     document.addEventListener('mousedown', handleDown)
     return () => document.removeEventListener('mousedown', handleDown)
   }, [notifOpen])
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const q = searchQuery.trim()
+    if (q) navigate(`/history?keyword=${encodeURIComponent(q)}`)
+  }
 
   return (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-11 border-b border-border bg-background shrink-0">

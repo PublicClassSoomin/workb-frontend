@@ -30,7 +30,7 @@ export default function NotesPage() {
   const meeting: Meeting =
     MEETINGS.find((m) => m.id === meetingId) ??
     readMeetingSnapshotForRoute(meetingId) ??
-    MEETINGS[4] // 목업 폴백 (m5)
+    MEETINGS.find((m) => m.status === 'completed') ?? MEETINGS[0]
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">

@@ -37,7 +37,7 @@ const MOCK_REPORT = `# UI/UX 디자인 검토 회의 보고서
 
 export default function ReportsPage() {
   const { meetingId } = useParams()
-  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[4]
+  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS.find((m) => m.status === 'completed') ?? MEETINGS[0]
   const [format, setFormat] = useState<Format>('html')
   const [reportContent, setReportContent] = useState(MOCK_REPORT)
   const [generated, setGenerated] = useState(true)

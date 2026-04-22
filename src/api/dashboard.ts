@@ -3,15 +3,16 @@ import { getApiV1BaseUrl } from './baseUrl'
 
 type BackendMeetingStatus = 'scheduled' | 'in_progress' | 'done'
 
-interface BackendDashboardParticipant {
+export interface BackendDashboardParticipant {
   user_id: number
   name: string
 }
 
-interface BackendMeetingItem {
+/** 대시보드·회의 단건 API 공통 회의 행 형태 */
+export interface BackendMeetingItem {
   id: number
   title: string
-  status: BackendMeetingStatus
+  status: BackendMeetingStatus | string
   scheduled_at?: string | null
   started_at?: string | null
   ended_at?: string | null
@@ -74,10 +75,11 @@ function participantFromDashboard(p: BackendDashboardParticipant): Participant {
   }
 }
 
-function mapStatus(s: BackendMeetingStatus): MeetingStatus {
+export function mapApiMeetingStatus(s: string): MeetingStatus {
   if (s === 'in_progress') return 'inprogress'
   if (s === 'scheduled') return 'upcoming'
-  return 'completed'
+  if (s === 'done') return 'completed'
+  return 'upcoming'
 }
 
 function pickStartAt(m: BackendMeetingItem): string {
@@ -89,13 +91,13 @@ function pickStartAt(m: BackendMeetingItem): string {
   )
 }
 
-function toMeeting(m: BackendMeetingItem): Meeting {
+export function mapApiMeetingItemToMeeting(m: BackendMeetingItem): Meeting {
   const apiParticipants = m.participants ?? []
   return {
     id: String(m.id),
     title: m.title,
     meetingType: m.meeting_type ?? undefined,
-    status: mapStatus(m.status),
+    status: mapApiMeetingStatus(String(m.status)),
     startAt: pickStartAt(m),
     endAt: m.ended_at ?? undefined,
     participants: apiParticipants.map(participantFromDashboard),
@@ -117,9 +119,9 @@ export async function fetchWorkspaceDashboard(workspaceId: number) {
   const data = (await res.json()) as BackendDashboardResponse
 
   const meetings: Meeting[] = [
-    ...data.meetings.in_progress.map(toMeeting),
-    ...data.meetings.scheduled.map(toMeeting),
-    ...data.meetings.done.map(toMeeting),
+    ...data.meetings.in_progress.map(mapApiMeetingItemToMeeting),
+    ...data.meetings.scheduled.map(mapApiMeetingItemToMeeting),
+    ...data.meetings.done.map(mapApiMeetingItemToMeeting),
   ]
 
   const weeklyStats: WeeklyStats = {
