@@ -10,7 +10,7 @@ const WORKSPACE_ID = 1
 export default function ExportPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[4]
+  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS.find((m) => m.status === 'completed') ?? MEETINGS[0]
   const [exported, setExported] = useState<Record<string, boolean>>({})
   const [exporting, setExporting] = useState<Record<string, boolean>>({})
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([])

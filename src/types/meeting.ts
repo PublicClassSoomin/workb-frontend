@@ -4,6 +4,8 @@ export type Priority = 'urgent' | 'high' | 'medium' | 'low'
 
 export interface Participant {
   id: string
+  /** MySQL `users.id` — 목업 UI id(p1…)와 분리 */
+  userId?: number
   name: string
   avatarInitials: string
   color: string
@@ -29,7 +31,8 @@ export interface ActionItem {
 export interface Meeting {
   id: string
   title: string
-  roomName?: string
+  /** 백엔드 `meeting_type` (예: 일반 회의, 스탠드업) */
+  meetingType?: string
   status: MeetingStatus
   startAt: string        // ISO 8601
   endAt?: string

@@ -1,34 +1,141 @@
-import { useState, useMemo } from 'react'
-import { Search, User, ChevronDown, MessageSquare, CheckSquare, Clock } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Search, User, ChevronDown, MessageSquare, Clock } from 'lucide-react'
 import clsx from 'clsx'
 import Badge from '../components/ui/Badge'
 import { AvatarGroup } from '../components/ui/Avatar'
-import { MEETINGS, PARTICIPANTS } from '../data/mockData'
-import type { Meeting } from '../types/meeting'
+import { PARTICIPANTS } from '../data/mockData'
 import { formatDateFull, durationMinutes } from '../utils/format'
-import { useNavigate } from 'react-router-dom'
+import { persistMeetingSnapshot } from '../utils/meetingRoutes'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
+import type { Meeting } from '../types/meeting'
+import { getApiV1BaseUrl } from '../api/baseUrl'
+
+type BackendStatus = 'scheduled' | 'in_progress' | 'done'
+type UiStatus = 'upcoming' | 'inprogress' | 'completed'
+
+interface MeetingHistoryItem {
+  id: number
+  title: string
+  status: BackendStatus
+  scheduled_at?: string | null
+  started_at?: string | null
+  ended_at?: string | null
+  summary?: string | null
+}
+
+interface MeetingHistoryResponse {
+  total: number
+  page: number
+  meetings: MeetingHistoryItem[]
+}
+
+function mapStatus(s: BackendStatus): UiStatus {
+  if (s === 'in_progress') return 'inprogress'
+  if (s === 'scheduled') return 'upcoming'
+  return 'completed'
+}
+
+function pickStartAt(m: MeetingHistoryItem): string {
+  return (
+    m.started_at ??
+    m.scheduled_at ??
+    m.ended_at ??
+    new Date().toISOString()
+  )
+}
+
+function historyItemToMeeting(m: MeetingHistoryItem): Meeting {
+  return {
+    id: String(m.id),
+    title: m.title,
+    status: mapStatus(m.status) as Meeting['status'],
+    startAt: pickStartAt(m),
+    endAt: m.ended_at ?? undefined,
+    participants: [],
+    agenda: [],
+    summary: m.summary ?? undefined,
+    actionItemCount: 0,
+    decisionCount: 0,
+    tags: [],
+  }
+}
 
 export default function HistoryPage() {
-  const [query, setQuery] = useState('')
-  const [participantFilter, setParticipantFilter] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  // Only show completed + in-progress (not upcoming) in history
-  const historyMeetings = MEETINGS.filter((m) => m.status !== 'upcoming')
+  const initialKeyword = (searchParams.get('keyword') ?? '').trim()
+
+  const [searchKeyword, setSearchKeyword] = useState(initialKeyword)
+  const [participantFilter, setParticipantFilter] = useState<string | null>(null)
+  const [meetingsHistory, setMeetingsHistory] = useState<MeetingHistoryItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+
+  // Keep state in sync when user lands via TopBar (/history?keyword=...)
+  useEffect(() => {
+    setSearchKeyword(initialKeyword)
+  }, [initialKeyword])
+
+  useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) setWorkspaceId(id)
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
+  // Debounced fetch
+  useEffect(() => {
+    const keyword = searchKeyword.trim()
+    const handle = setTimeout(() => {
+      const controller = new AbortController()
+      const qs = new URLSearchParams()
+      if (keyword) qs.set('keyword', keyword)
+      qs.set('page', '1')
+      qs.set('size', '20')
+
+      setLoading(true)
+      setError(null)
+
+      fetch(`${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/history?${qs.toString()}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text().catch(() => '')
+            throw new Error(`History API failed (${res.status}): ${text}`)
+          }
+          return (await res.json()) as MeetingHistoryResponse
+        })
+        .then((data) => {
+          setMeetingsHistory(data.meetings)
+          setTotal(data.total)
+        })
+        .catch((e) => {
+          if (e instanceof DOMException && e.name === 'AbortError') return
+          setError(e instanceof Error ? e.message : String(e))
+          setMeetingsHistory([])
+          setTotal(0)
+        })
+        .finally(() => setLoading(false))
+
+      return () => controller.abort()
+    }, 400)
+
+    return () => clearTimeout(handle)
+  }, [searchKeyword, workspaceId])
 
   const filtered = useMemo(() => {
-    return historyMeetings.filter((m) => {
-      const lq = query.toLowerCase()
-      const matchQuery = query === '' ||
-        m.title.toLowerCase().includes(lq) ||
-        m.tags.some((t) => t.toLowerCase().includes(lq)) ||
-        (m.roomName?.toLowerCase().includes(lq) ?? false)
-
-      const matchParticipant = participantFilter === null ||
-        m.participants.some((p) => p.id === participantFilter)
-
-      return matchQuery && matchParticipant
-    })
-  }, [query, participantFilter, historyMeetings])
+    // 현재는 backend가 keyword로 필터링을 수행하므로, 프론트에서는 추가 필터링을 최소화합니다.
+    // (participant filter는 추후 API 파라미터로 지원되면 이곳에서 qs에 포함시키는 방식으로 확장)
+    return meetingsHistory
+  }, [meetingsHistory])
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6">
@@ -48,9 +155,16 @@ export default function HistoryPage() {
           <Search size={13} className="text-muted-foreground shrink-0" />
           <input
             type="search"
-            placeholder="회의 제목, 태그, 회의실 검색..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            placeholder="회의 제목, 회의록 내용 검색..."
+            value={searchKeyword}
+            onChange={(e) => {
+              const next = e.target.value
+              setSearchKeyword(next)
+              const params = new URLSearchParams(searchParams)
+              if (next.trim()) params.set('keyword', next)
+              else params.delete('keyword')
+              setSearchParams(params, { replace: true })
+            }}
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground min-w-0"
           />
         </div>
@@ -77,12 +191,18 @@ export default function HistoryPage() {
 
         {/* Result count */}
         <span className="text-sm text-muted-foreground ml-auto">
-          {filtered.length}개 회의
+          {loading ? '불러오는 중...' : `${total}개 회의`}
         </span>
       </div>
 
       {/* Meeting list */}
-      {filtered.length === 0 ? (
+      {error ? (
+        <div className="mb-4 p-3 rounded border border-red-500/20 bg-red-500/5 text-sm text-red-600">
+          {error}
+        </div>
+      ) : null}
+
+      {filtered.length === 0 && !loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-2">
           <Search size={32} className="text-muted-foreground/30" />
           <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>
@@ -98,7 +218,14 @@ export default function HistoryPage() {
           </div>
 
           {filtered.map((meeting) => (
-            <MeetingRow key={meeting.id} meeting={meeting} />
+            <MeetingRow
+              key={meeting.id}
+              meeting={meeting}
+              onClick={() => {
+                persistMeetingSnapshot(historyItemToMeeting(meeting))
+                navigate(`/meetings/${meeting.id}/notes`)
+              }}
+            />
           ))}
         </div>
       )}
@@ -117,37 +244,47 @@ export default function HistoryPage() {
 }
 
 // ── MeetingRow ────────────────────────────────────────────────────────────
-function MeetingRow({ meeting }: { meeting: Meeting }) {
-  const navigate = useNavigate()
-  const duration = meeting.endAt ? durationMinutes(meeting.startAt, meeting.endAt) : null
+function MeetingRow({
+  meeting,
+  onClick,
+}: {
+  meeting: MeetingHistoryItem
+  onClick: () => void
+}) {
+  const startAt = pickStartAt(meeting)
+  const endAt = meeting.ended_at ?? undefined
+  const duration = endAt ? durationMinutes(startAt, endAt) : null
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => navigate(`/meetings/${meeting.id}/notes`)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meetings/${meeting.id}/notes`) } }}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
       className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 md:gap-4 px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors"
     >
       {/* Title + tags */}
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <Badge variant={meeting.status} dot={meeting.status === 'inprogress'} />
+          <Badge variant={mapStatus(meeting.status)} dot={meeting.status === 'in_progress'} />
           <h3 className="text-sm font-medium text-foreground truncate">{meeting.title}</h3>
         </div>
-        <div className="flex flex-wrap gap-1">
-          {meeting.tags.map((tag) => (
-            <span key={tag} className="px-1.5 py-0.5 rounded text-micro bg-muted text-muted-foreground">
-              {tag}
-            </span>
-          ))}
-        </div>
+        {meeting.summary && (
+          <p className="text-mini text-muted-foreground line-clamp-2">
+            {meeting.summary}
+          </p>
+        )}
       </div>
 
       {/* Date + duration */}
       <div className="flex flex-col items-end justify-center gap-0.5 text-right">
         <span className="text-sm text-foreground whitespace-nowrap">
-          {formatDateFull(meeting.startAt)}
+          {formatDateFull(startAt)}
         </span>
         {duration && (
           <span className="flex items-center gap-1 text-mini text-muted-foreground">
@@ -159,24 +296,11 @@ function MeetingRow({ meeting }: { meeting: Meeting }) {
 
       {/* Participants */}
       <div className="flex items-center justify-end">
-        <AvatarGroup participants={meeting.participants} max={3} />
+        <AvatarGroup participants={[]} max={3} />
       </div>
 
       {/* Stats */}
-      <div className="flex items-center justify-end gap-3 text-mini text-muted-foreground">
-        {meeting.actionItemCount > 0 && (
-          <span className="flex items-center gap-1">
-            <CheckSquare size={11} />
-            {meeting.actionItemCount}
-          </span>
-        )}
-        {meeting.decisionCount > 0 && (
-          <span className="flex items-center gap-1">
-            <MessageSquare size={11} />
-            {meeting.decisionCount}
-          </span>
-        )}
-      </div>
+      <div className="flex items-center justify-end gap-3 text-mini text-muted-foreground" />
     </div>
   )
 }

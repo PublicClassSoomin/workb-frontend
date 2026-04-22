@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useId } from 'react'
+import { useEffect, useMemo, useState, useRef, useId } from 'react'
 import { NavLink, Link, useNavigate } from 'react-router-dom'
 import {
   Home,
@@ -30,20 +30,36 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import Tooltip from '../ui/Tooltip'
+import { getCurrentWorkspaceId, setCurrentWorkspaceId } from '../../utils/workspace'
+import { fetchMyWorkspaces, type WorkspaceListItem } from '../../api/workspaces'
 
-// ── 워크스페이스 목록 (목업) ─────────────────────────────────────────────────
 interface Workspace {
-  id: string
+  id: number
   name: string
   initial: string
   color: string
+  role: string
 }
 
-const WORKSPACES: Workspace[] = [
-  { id: 'ws1', name: 'Workb 팀',    initial: 'W', color: '#6b78f6' },
-  { id: 'ws2', name: '디자인 스쿼드', initial: 'D', color: '#ec4899' },
-  { id: 'ws3', name: '개발팀',       initial: 'G', color: '#22c55e' },
-]
+function colorForWorkspace(id: number): string {
+  const palette = ['#6b78f6', '#22c55e', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#8b5cf6', '#64748b']
+  return palette[Math.abs(id) % palette.length]
+}
+
+function initialForName(name: string): string {
+  const trimmed = name.trim()
+  return trimmed ? trimmed[0].toUpperCase() : '?'
+}
+
+function toUiWorkspace(w: WorkspaceListItem): Workspace {
+  return {
+    id: w.id,
+    name: w.name,
+    initial: initialForName(w.name),
+    color: colorForWorkspace(w.id),
+    role: w.role,
+  }
+}
 
 // ── 워크스페이스 셀렉터 서브컴포넌트 ─────────────────────────────────────────
 interface WorkspaceSelectorProps {
@@ -52,13 +68,41 @@ interface WorkspaceSelectorProps {
 
 function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
   const navigate = useNavigate()
-  const [currentId, setCurrentId] = useState(WORKSPACES[0].id)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [currentId, setCurrentId] = useState<number>(() => getCurrentWorkspaceId())
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const listId = useId()
 
-  const current = WORKSPACES.find((w) => w.id === currentId) ?? WORKSPACES[0]
+  const current = useMemo(
+    () => workspaces.find((w) => w.id === currentId) ?? workspaces[0],
+    [workspaces, currentId],
+  )
+
+  // 워크스페이스 목록 로드 + 현재 선택 보정
+  useEffect(() => {
+    let mounted = true
+    fetchMyWorkspaces()
+      .then((rows) => {
+        if (!mounted) return
+        const ui = rows.map(toUiWorkspace)
+        setWorkspaces(ui)
+
+        const stored = getCurrentWorkspaceId()
+        const next = ui.some((w) => w.id === stored) ? stored : ui[0]?.id
+        if (next && next !== stored) setCurrentWorkspaceId(next)
+        if (next) setCurrentId(next)
+      })
+      .catch(() => {
+        // 목록 API가 실패해도 앱이 완전히 멈추지 않도록 빈 목록 유지
+        if (!mounted) return
+        setWorkspaces([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // 외부 클릭·ESC로 닫기, 포커스 복귀
   useEffect(() => {
@@ -86,7 +130,17 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
     setCurrentId(ws.id)
     setOpen(false)
     triggerRef.current?.focus()
+    setCurrentWorkspaceId(ws.id)
     navigate('/')
+  }
+
+  if (!current) {
+    // 로딩/빈 목록일 때 레이아웃 유지
+    return (
+      <div className={clsx('flex items-center', collapsed ? 'justify-center' : '')}>
+        <span className="text-sm text-muted-foreground truncate">워크스페이스</span>
+      </div>
+    )
   }
 
   // 아이콘(아바타)은 collapsed 상태에서도 표시
@@ -143,7 +197,7 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
           aria-label="워크스페이스 목록"
           className="absolute left-0 top-full mt-1 z-50 w-full bg-card border border-border rounded-lg shadow-lg py-1 overflow-hidden"
         >
-          {WORKSPACES.map((ws) => {
+          {workspaces.map((ws) => {
             const isSelected = ws.id === currentId
             return (
               <li key={ws.id} role="option" aria-selected={isSelected}>
@@ -204,16 +258,16 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/meetings/new', label: '회의 생성 · 예약', icon: Plus },
       { to: '/meetings/context', label: '이전 회의 맥락', icon: Search },
-      { to: '/live/m1', label: '실시간 회의', icon: Video },
+      { to: '/live/2', label: '실시간 회의', icon: Video },
     ],
   },
   {
     label: '회의 후',
     items: [
-      { to: '/meetings/m5/notes', label: '회의록', icon: FileText },
-      { to: '/meetings/m5/wbs', label: 'WBS · 태스크', icon: ListTodo },
-      { to: '/meetings/m5/reports', label: '보고서 생성', icon: FileBarChart },
-      { to: '/meetings/m5/export', label: '내보내기 · 공유', icon: Share2 },
+      { to: '/meetings/3/notes', label: '회의록', icon: FileText },
+      { to: '/meetings/3/wbs', label: 'WBS · 태스크', icon: ListTodo },
+      { to: '/meetings/3/reports', label: '보고서 생성', icon: FileBarChart },
+      { to: '/meetings/3/export', label: '내보내기 · 공유', icon: Share2 },
     ],
   },
   {

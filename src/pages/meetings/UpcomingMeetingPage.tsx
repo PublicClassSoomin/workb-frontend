@@ -1,12 +1,97 @@
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Clock, Users, Calendar, Video, DoorOpen } from 'lucide-react'
-import { MEETINGS } from '../../data/mockData'
+import { ArrowLeft, Clock, Users, Calendar, Video, Trash2, Edit2 } from 'lucide-react'
 import { formatTime } from '../../utils/format'
+import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
+import type { Meeting } from '../../types/meeting'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
+import { fetchWorkspaceMeetingDetail } from '../../api/meetings'
+import { getApiV1BaseUrl } from '../../api/baseUrl'
 
 export default function UpcomingMeetingPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId)
+  const [meeting, setMeeting] = useState<Meeting | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+
+  useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) setWorkspaceId(id)
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
+  useEffect(() => {
+    if (!meetingId) {
+      setLoading(false)
+      setMeeting(null)
+      setError('회의 ID가 없습니다.')
+      return
+    }
+
+    const numericId = Number(meetingId)
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      setLoading(false)
+      setMeeting(null)
+      setError('유효하지 않은 회의 ID입니다.')
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    fetchWorkspaceMeetingDetail(workspaceId, numericId)
+      .then((m) => {
+        if (cancelled) return
+        setMeeting(m)
+        setError(null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        const snap = readMeetingSnapshotForRoute(meetingId)
+        if (snap && snap.id === meetingId) {
+          setMeeting(snap)
+          setError(null)
+        } else {
+          setMeeting(null)
+          setError('회의를 불러오지 못했습니다.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [meetingId, workspaceId])
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+        <p className="text-sm">회의 정보를 불러오는 중…</p>
+      </div>
+    )
+  }
+
+  if (error && !meeting) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
+        <p className="text-sm">{error}</p>
+        <button
+          onClick={() => navigate('/')}
+          className="text-sm text-accent hover:underline"
+        >
+          홈으로 돌아가기
+        </button>
+      </div>
+    )
+  }
 
   if (!meeting) {
     return (
@@ -31,8 +116,8 @@ export default function UpcomingMeetingPage() {
     diffMs <= 0
       ? '지금 시작 가능'
       : diffHours > 0
-      ? `${diffHours}시간 ${diffMins}분 후`
-      : `${diffMins}분 후`
+        ? `${diffHours}시간 ${diffMins}분 후`
+        : `${diffMins}분 후`
 
   const dateLabel = startDate.toLocaleDateString('ko-KR', {
     year: 'numeric',
@@ -43,7 +128,6 @@ export default function UpcomingMeetingPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
-      {/* 뒤로 가기 */}
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
@@ -52,7 +136,6 @@ export default function UpcomingMeetingPage() {
         뒤로
       </button>
 
-      {/* 헤더 */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">
           <span className="px-2 py-0.5 rounded-full text-mini font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
@@ -75,9 +158,7 @@ export default function UpcomingMeetingPage() {
         )}
       </div>
 
-      {/* 정보 카드 */}
       <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-4 mb-5">
-        {/* 날짜 */}
         <div className="flex items-start gap-3">
           <Calendar size={16} className="text-muted-foreground mt-0.5 shrink-0" />
           <div>
@@ -85,7 +166,6 @@ export default function UpcomingMeetingPage() {
           </div>
         </div>
 
-        {/* 시간 */}
         <div className="flex items-start gap-3">
           <Clock size={16} className="text-muted-foreground mt-0.5 shrink-0" />
           <div>
@@ -98,17 +178,6 @@ export default function UpcomingMeetingPage() {
           </div>
         </div>
 
-        {/* 회의실 */}
-        {meeting.roomName && (
-          <div className="flex items-start gap-3">
-            <DoorOpen size={16} className="text-muted-foreground mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-foreground">{meeting.roomName}</p>
-            </div>
-          </div>
-        )}
-
-        {/* 참석자 */}
         <div className="flex items-start gap-3">
           <Users size={16} className="text-muted-foreground mt-0.5 shrink-0" />
           <div>
@@ -136,7 +205,6 @@ export default function UpcomingMeetingPage() {
         </div>
       </div>
 
-      {/* 액션 버튼 */}
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={() => navigate(`/live/${meeting.id}`)}
@@ -147,14 +215,51 @@ export default function UpcomingMeetingPage() {
         </button>
       </div>
 
-      {/* 수정 링크 */}
-      <div className="mt-4 flex items-center justify-end">
+      <div className="mt-4 flex items-center justify-end gap-3">
         <Link
           to="/meetings/new"
-          className="text-mini text-muted-foreground hover:text-foreground transition-colors"
+          state={{ draftMeeting: meeting }}
+          className="inline-flex items-center gap-1.5 text-mini text-muted-foreground hover:text-foreground transition-colors"
         >
-          회의 정보 수정
+          <Edit2 size={13} aria-hidden="true" />
+          수정
         </Link>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!meetingId) return
+            const ok = window.confirm('회의를 삭제하시겠습니까?')
+            if (!ok) return
+
+            const token =
+              localStorage.getItem('access_token') ||
+              localStorage.getItem('token') ||
+              localStorage.getItem('authToken')
+
+            const res = await fetch(
+              `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/${meetingId}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  Accept: 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+              },
+            )
+
+            if (!res.ok) {
+              const text = await res.text().catch(() => '')
+              alert(`회의 삭제 실패 (${res.status})\n${text}`)
+              return
+            }
+
+            navigate('/')
+          }}
+          className="inline-flex items-center gap-1.5 text-mini text-red-600 hover:text-red-700 transition-colors"
+        >
+          <Trash2 size={13} aria-hidden="true" />
+          삭제
+        </button>
       </div>
     </div>
   )

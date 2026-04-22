@@ -1,7 +1,6 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL
-  ?? import.meta.env.VITE_API_URL
-  ?? 'http://127.0.0.1:8000/api/v1'
+import { getApiV1BaseUrl } from './baseUrl'
+
+export const API_BASE_URL = getApiV1BaseUrl()
 
 interface TokenResponse {
   access_token: string
@@ -32,6 +31,17 @@ function formatErrorMessage(detail: unknown): string {
   if (detail && typeof detail === 'object' && 'detail' in detail) {
     const nested = (detail as { detail: unknown }).detail
     if (typeof nested === 'string') return nested
+    if (Array.isArray(nested)) {
+      const parts = nested
+        .map((item) => {
+          if (item && typeof item === 'object' && 'msg' in item) {
+            return String((item as { msg: unknown }).msg)
+          }
+          return null
+        })
+        .filter((x): x is string => Boolean(x))
+      if (parts.length) return parts.join(' ')
+    }
     if (nested && typeof nested === 'object' && 'message' in nested) {
       const message = (nested as { message: unknown }).message
       if (typeof message === 'string') return message
