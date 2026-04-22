@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AppShell from './components/layout/AppShell'
 import AuthLayout from './components/layout/AuthLayout'
 import FullscreenLayout from './components/layout/FullscreenLayout'
+import { PublicOnlyRoute, RequireAdminRoute, RequireAuthRoute } from './components/auth/AuthGuards'
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage'
@@ -48,28 +49,34 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* ── 인증 라우트 (AppShell 없음) ── */}
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup/admin" element={<SignupAdminPage />} />
-          <Route path="/signup/member" element={<SignupMemberPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route element={<PublicOnlyRoute />}>
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup/admin" element={<SignupAdminPage />} />
+            <Route path="/signup/member" element={<SignupMemberPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+          </Route>
         </Route>
 
         {/* ── 온보딩 라우트 (AppShell 없음) ── */}
-        <Route element={<AuthLayout />}>
-          <Route path="/onboarding/workspace" element={<OnboardingWorkspacePage />} />
-          <Route path="/onboarding/integrations" element={<OnboardingIntegrationsPage />} />
-          <Route path="/onboarding/invite" element={<OnboardingInvitePage />} />
+        <Route element={<RequireAuthRoute />}>
+          <Route element={<AuthLayout />}>
+            <Route path="/onboarding/workspace" element={<OnboardingWorkspacePage />} />
+            <Route path="/onboarding/integrations" element={<OnboardingIntegrationsPage />} />
+            <Route path="/onboarding/invite" element={<OnboardingInvitePage />} />
+          </Route>
         </Route>
 
         {/* ── 실시간 회의 (풀스크린, 사이드바·탑바 없음) ── */}
-        <Route element={<FullscreenLayout />}>
-          <Route path="/live" element={<LivePage />} />
-          <Route path="/live/:meetingId" element={<LivePage />} />
-          {/* 보조 기능은 LivePage 내 패널로 통합됨 — 이하 리다이렉트 */}
-          <Route path="/live/:meetingId/search" element={<Navigate to="/live/:meetingId" replace />} />
-          <Route path="/live/:meetingId/screen" element={<Navigate to="/live/:meetingId" replace />} />
-          <Route path="/live/:meetingId/speakers" element={<Navigate to="/live/:meetingId" replace />} />
+        <Route element={<RequireAuthRoute />}>
+          <Route element={<FullscreenLayout />}>
+            <Route path="/live" element={<LivePage />} />
+            <Route path="/live/:meetingId" element={<LivePage />} />
+            {/* 보조 기능은 LivePage 내 패널로 통합됨 — 이하 리다이렉트 */}
+            <Route path="/live/:meetingId/search" element={<Navigate to="/live/:meetingId" replace />} />
+            <Route path="/live/:meetingId/screen" element={<Navigate to="/live/:meetingId" replace />} />
+            <Route path="/live/:meetingId/speakers" element={<Navigate to="/live/:meetingId" replace />} />
+          </Route>
         </Route>
 
         {/* ── 앱 셸 라우트 ── */}
@@ -101,11 +108,13 @@ export default function App() {
           <Route path="meetings/:meetingId/export" element={<ExportPage />} />
 
           {/* 설정 */}
-          <Route path="settings/workspace" element={<WorkspaceSettingsPage />} />
-          <Route path="settings/members" element={<MembersSettingsPage />} />
-          <Route path="settings/departments" element={<DepartmentsSettingsPage />} />
+          <Route element={<RequireAdminRoute />}>
+            <Route path="settings/workspace" element={<WorkspaceSettingsPage />} />
+            <Route path="settings/members" element={<MembersSettingsPage />} />
+            <Route path="settings/departments" element={<DepartmentsSettingsPage />} />
+            <Route path="settings/integrations" element={<IntegrationsSettingsPage />} />
+          </Route>
           <Route path="settings/voice" element={<VoiceSettingsPage />} />
-          <Route path="settings/integrations" element={<IntegrationsSettingsPage />} />
           <Route path="settings/device" element={<DeviceSettingsPage />} />
 
           {/* 404 */}
