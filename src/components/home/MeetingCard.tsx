@@ -1,10 +1,11 @@
-import { Clock, CheckSquare, MessageSquare, ChevronRight } from 'lucide-react'
+import { Clock, CheckSquare, MessageSquare, ChevronRight, Users, Tag } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import Badge from '../ui/Badge'
 import { AvatarGroup } from '../ui/Avatar'
 import type { Meeting } from '../../types/meeting'
 import { formatRelativeTime, formatTime } from '../../utils/format'
+import { persistMeetingSnapshot } from '../../utils/meetingRoutes'
 
 interface MeetingCardProps {
   meeting: Meeting
@@ -17,16 +18,26 @@ function getMeetingRoute(meeting: Meeting): string {
   return `/meetings/${meeting.id}/notes`
 }
 
+function goToMeeting(navigate: ReturnType<typeof useNavigate>, meeting: Meeting) {
+  const route = getMeetingRoute(meeting)
+  if (!route.startsWith('/live/')) persistMeetingSnapshot(meeting)
+  navigate(route)
+}
+
 export default function MeetingCard({ meeting }: MeetingCardProps) {
   const navigate = useNavigate()
-  const route = getMeetingRoute(meeting)
 
   return (
     <article
       role="button"
       tabIndex={0}
-      onClick={() => navigate(route)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(route) } }}
+      onClick={() => goToMeeting(navigate, meeting)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          goToMeeting(navigate, meeting)
+        }
+      }}
       className={clsx(
         'group flex flex-col gap-2.5 p-3.5 rounded-lg border bg-card cursor-pointer',
         'hover:shadow-card-hover hover:border-accent/25 transition-all duration-quick',
@@ -56,6 +67,33 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
       <h3 className="text-sm font-medium text-foreground leading-snug line-clamp-2 group-hover:text-accent transition-colors">
         {meeting.title}
       </h3>
+
+      {/* 예정·진행 중: 회의실 · 유형 · 참석 직원 (텍스트로 명시) */}
+      {(meeting.status === 'upcoming' || meeting.status === 'inprogress') &&
+        (meeting.meetingType || meeting.participants.length > 0) && (
+          <div className="flex flex-col gap-1.5 text-mini text-muted-foreground">
+            {meeting.meetingType && (
+              <div className="flex items-start gap-1.5 min-w-0">
+                <Tag size={12} className="shrink-0 mt-0.5 opacity-80" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="text-muted-foreground/80">유형 </span>
+                  <span className="text-foreground/90">{meeting.meetingType}</span>
+                </span>
+              </div>
+            )}
+            {meeting.participants.length > 0 && (
+              <div className="flex items-start gap-1.5 min-w-0">
+                <Users size={12} className="shrink-0 mt-0.5 opacity-80" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="text-muted-foreground/80">참석 </span>
+                  <span className="text-foreground/90 break-words">
+                    {meeting.participants.map((p) => p.name).join(', ')}
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
       {/* Tags */}
       {meeting.tags.length > 0 && (

@@ -36,3 +36,6 @@ pnpm-debug.log*
 .claude/
 .cursor/
 CLAUDE.md
+
+# code-review-graph (코드 리뷰 그래프 MCP/CLI — 로컬 그래프 DB·캐시·인덱스)
+.code-review-graph/

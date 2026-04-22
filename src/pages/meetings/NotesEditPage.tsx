@@ -6,7 +6,7 @@ import { MEETINGS } from '../../data/mockData'
 export default function NotesEditPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[4]
+  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS.find((m) => m.status === 'completed') ?? MEETINGS[0]
 
   const [summary, setSummary] = useState(meeting.summary ?? '')
   const [decisions, setDecisions] = useState([
