@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Plus, Sun, Moon, Bell, Monitor, Menu } from 'lucide-react'
+import { Search, Plus, Sun, Moon, Bell, Monitor, Menu, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import type { ThemePreference } from '../../hooks/useThemePreference'
 import NotificationsPanel from './NotificationsPanel'
@@ -12,6 +12,7 @@ interface TopBarProps {
   resolvedDark: boolean
   onCycleTheme: () => void
   onMenuOpen?: () => void
+  onLogout?: () => void
 }
 
 const THEME_CYCLE_HINT: Record<ThemePreference, string> = {
@@ -25,6 +26,7 @@ export default function TopBar({
   resolvedDark,
   onCycleTheme,
   onMenuOpen,
+  onLogout,
 }: TopBarProps) {
   const navigate = useNavigate()
   const [searchFocused, setSearchFocused] = useState(false)
@@ -32,6 +34,7 @@ export default function TopBar({
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
 
+<<<<<<< HEAD
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return
     e.preventDefault()
@@ -44,20 +47,23 @@ export default function TopBar({
   }
 
   // 알림 패널 외부 클릭으로 닫기
+=======
+>>>>>>> main
   useEffect(() => {
     if (!notifOpen) return
-    function handleDown(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+
+    function handleDown(event: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setNotifOpen(false)
       }
     }
+
     document.addEventListener('mousedown', handleDown)
     return () => document.removeEventListener('mousedown', handleDown)
   }, [notifOpen])
 
   return (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-11 border-b border-border bg-background shrink-0">
-      {/* 햄버거 — 모바일 전용 */}
       <Tooltip label="메뉴 열기" placement="bottom">
         <button
           className="md:hidden flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
@@ -69,7 +75,6 @@ export default function TopBar({
         </button>
       </Tooltip>
 
-      {/* 검색 */}
       <div
         className={clsx(
           'flex items-center gap-2 flex-1 max-w-xs h-7 px-2.5 rounded border text-sm transition-colors',
@@ -97,12 +102,9 @@ export default function TopBar({
         )}
       </div>
 
-      {/* 스페이서 */}
       <div className="flex-1" />
 
-      {/* 액션 영역 */}
       <div className="flex items-center gap-1">
-        {/* 새 회의 버튼 → /meetings/new */}
         <Tooltip label="새 회의 생성" placement="bottom">
           <button
             onClick={() => navigate('/meetings/new')}
@@ -117,27 +119,23 @@ export default function TopBar({
           </button>
         </Tooltip>
 
-        {/* 알림 버튼 + 팝오버 */}
         <div ref={notifRef} className="relative">
           <Tooltip label="알림" placement="bottom">
             <button
-              onClick={() => setNotifOpen((o) => !o)}
+              onClick={() => setNotifOpen((open) => !open)}
               className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors relative"
               aria-label="알림"
               aria-haspopup="dialog"
               aria-expanded={notifOpen}
             >
               <Bell size={15} aria-hidden="true" />
-              {/* 읽지 않은 알림 표시 */}
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
             </button>
           </Tooltip>
 
-          {/* 알림 패널 */}
           {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
         </div>
 
-        {/* 테마 전환: system → light → dark */}
         <Tooltip label={THEME_CYCLE_HINT[themePreference]} placement="bottom">
           <button
             type="button"
@@ -152,6 +150,17 @@ export default function TopBar({
             ) : (
               <Sun size={15} aria-hidden="true" />
             )}
+          </button>
+        </Tooltip>
+
+        <Tooltip label="로그아웃" placement="bottom">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="로그아웃"
+          >
+            <LogOut size={15} aria-hidden="true" />
           </button>
         </Tooltip>
       </div>

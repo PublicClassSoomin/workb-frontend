@@ -19,13 +19,13 @@ import {
   Search,
   Link2,
   Gauge,
+  Building2,
   X,
   CalendarDays,
   ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   Check,
-  Building2,
   type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
