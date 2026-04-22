@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { Save } from 'lucide-react'
+import { Image as ImageIcon, Save, Upload, X } from 'lucide-react'
 import { useAccentColor } from '../../hooks/useAccentColor'
 import { useFontScale } from '../../context/FontScaleContext'
 import { getCurrentWorkspaceId } from '../../api/client'
@@ -8,6 +8,8 @@ import { getWorkspace, updateWorkspace } from '../../api/workspace'
 
 const SUMMARY_STYLES = ['간결형 (결정사항·액션아이템 중심)', '상세형 (전문 포함)', '발표형 (PPT 구조)', '커스텀']
 const LANGUAGES = ['한국어', 'English', '日本語']
+const DEFAULT_LOGO_URL = '/brand/workb-logo.png'
+const MAX_LOGO_SIZE = 1024 * 1024
 
 const FONT_SCALE_OPTIONS: { id: 'sm' | 'md' | 'lg'; label: string; hint: string }[] = [
   { id: 'sm', label: '작게', hint: '16px 기준' },
@@ -15,12 +17,26 @@ const FONT_SCALE_OPTIONS: { id: 'sm' | 'md' | 'lg'; label: string; hint: string 
   { id: 'lg', label: '크게', hint: '20px 기준' },
 ]
 
+function getLocalLogoKey(workspaceId: number): string {
+  return `workb-workspace-logo-${workspaceId}`
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('로고 파일을 읽지 못했습니다.'))
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function WorkspaceSettingsPage() {
   const [teamName, setTeamName] = useState('Workb 팀')
   const [industry, setIndustry] = useState('')
   const [language, setLanguage] = useState('한국어')
   const [summaryStyle, setSummaryStyle] = useState(SUMMARY_STYLES[0])
-  const [logoUrl, setLogoUrl] = useState('/brand/workb-logo.png')
+  const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL)
+  const [logoFileName, setLogoFileName] = useState('')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -49,7 +65,7 @@ export default function WorkspaceSettingsPage() {
         setIndustry(workspace.industry ?? '')
         setLanguage(workspace.default_language ?? '한국어')
         setSummaryStyle(workspace.summary_style ?? SUMMARY_STYLES[0])
-        setLogoUrl(workspace.logo_url ?? '/brand/workb-logo.png')
+        setLogoUrl(localStorage.getItem(getLocalLogoKey(workspaceId)) ?? workspace.logo_url ?? DEFAULT_LOGO_URL)
       } catch (err) {
         if (!active) return
         setError(err instanceof Error ? err.message : '워크스페이스 정보를 불러오지 못했습니다.')
@@ -65,24 +81,63 @@ export default function WorkspaceSettingsPage() {
     }
   }, [workspaceId])
 
+  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('이미지 파일만 업로드할 수 있습니다.')
+      return
+    }
+
+    if (file.size > MAX_LOGO_SIZE) {
+      setError('로고 이미지는 1MB 이하 파일을 사용해 주세요.')
+      return
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      setLogoUrl(dataUrl)
+      setLogoFileName(file.name)
+      setError('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '로고 파일을 읽지 못했습니다.')
+    }
+  }
+
+  function resetLogo() {
+    setLogoUrl(DEFAULT_LOGO_URL)
+    setLogoFileName('')
+    localStorage.removeItem(getLocalLogoKey(workspaceId))
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError('')
 
     try {
+      const isLocalUpload = logoUrl.startsWith('data:')
       const workspace = await updateWorkspace(workspaceId, {
         name: teamName,
         industry: industry || null,
         default_language: language,
         summary_style: summaryStyle,
-        logo_url: logoUrl || null,
+        logo_url: isLocalUpload ? null : logoUrl || null,
       })
+      if (isLocalUpload) {
+        localStorage.setItem(getLocalLogoKey(workspaceId), logoUrl)
+      } else {
+        localStorage.removeItem(getLocalLogoKey(workspaceId))
+      }
+
       setTeamName(workspace.name)
       setIndustry(workspace.industry ?? '')
       setLanguage(workspace.default_language ?? '한국어')
       setSummaryStyle(workspace.summary_style ?? SUMMARY_STYLES[0])
-      setLogoUrl(workspace.logo_url ?? '/brand/workb-logo.png')
+      setLogoUrl(localStorage.getItem(getLocalLogoKey(workspaceId)) ?? workspace.logo_url ?? DEFAULT_LOGO_URL)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
@@ -136,16 +191,40 @@ export default function WorkspaceSettingsPage() {
 
         {/* Logo */}
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">팀 로고 URL</label>
+          <label className="block text-sm font-medium text-foreground mb-1.5">팀 로고</label>
           <div className="flex items-center gap-3">
-            <img src={logoUrl || '/brand/workb-logo.png'} alt="Workb 팀 로고" className="w-12 h-12 rounded-xl object-cover" />
-            <input
-              type="url"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://example.com/logo.png"
-              className="flex-1 h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
-            />
+            <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Workb 팀 로고" className="h-full w-full object-cover" />
+              ) : (
+                <ImageIcon size={18} className="text-muted-foreground" />
+              )}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted">
+                  <Upload size={14} />
+                  이미지 업로드
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={handleLogoUpload}
+                    className="sr-only"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={resetLogo}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X size={14} />
+                  기본 로고
+                </button>
+              </div>
+              <p className="truncate text-mini text-muted-foreground">
+                {logoFileName || 'PNG, JPG, WEBP, GIF 파일을 업로드하세요. 최대 1MB입니다.'}
+              </p>
+            </div>
           </div>
         </div>
 

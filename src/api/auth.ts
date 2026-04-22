@@ -1,4 +1,10 @@
-import { apiRequest, clearAuthTokens, setAuthTokens } from './client'
+import {
+  apiRequest,
+  clearAuthTokens,
+  setAuthTokens,
+  syncStoredUserFromToken,
+  type StoredUser,
+} from './client'
 
 export interface LoginPayload {
   email: string
@@ -54,12 +60,16 @@ export function signupMember(payload: MemberSignupPayload): Promise<UserResponse
   })
 }
 
-export async function login(payload: LoginPayload): Promise<TokenResponse> {
+export async function login(
+  payload: LoginPayload,
+  userFallback: Partial<StoredUser> = {},
+): Promise<TokenResponse> {
   const tokens = await apiRequest<TokenResponse>('/users/login', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
   setAuthTokens(tokens.access_token, tokens.refresh_token)
+  syncStoredUserFromToken({ email: payload.email, ...userFallback })
   return tokens
 }
 
@@ -70,6 +80,7 @@ export async function refreshToken(refreshTokenValue: string): Promise<TokenResp
     body: JSON.stringify({ refresh_token: refreshTokenValue }),
   })
   setAuthTokens(tokens.access_token, tokens.refresh_token)
+  syncStoredUserFromToken()
   return tokens
 }
 
