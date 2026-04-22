@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import Tooltip from '../ui/Tooltip'
+import { useAuth } from '../../context/AuthContext'
 
 // ── 워크스페이스 목록 (목업) ─────────────────────────────────────────────────
 interface Workspace {
@@ -183,6 +184,7 @@ interface NavItemDef {
   label: string
   icon: LucideIcon
   badge?: number
+  adminOnly?: boolean
 }
 
 interface NavGroup {
@@ -219,11 +221,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: '설정',
     items: [
-      { to: '/settings/workspace', label: '워크스페이스', icon: LayoutGrid },
-      { to: '/settings/members', label: '멤버 · 권한', icon: Users },
-      { to: '/settings/departments', label: '부서 관리', icon: Building2 },
+      { to: '/settings/workspace', label: '워크스페이스', icon: LayoutGrid, adminOnly: true },
+      { to: '/settings/members', label: '멤버 · 권한', icon: Users, adminOnly: true },
+      { to: '/settings/departments', label: '부서 관리', icon: Building2, adminOnly: true },
       { to: '/settings/voice', label: '화자 등록', icon: Mic },
-      { to: '/settings/integrations', label: '연동 관리', icon: Link2 },
+      { to: '/settings/integrations', label: '연동 관리', icon: Link2, adminOnly: true },
       { to: '/settings/device', label: '장비 설정', icon: Gauge },
     ],
   },
@@ -237,6 +239,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose }: SidebarProps) {
+  const { isAdmin } = useAuth()
+  const settingsPath = isAdmin ? '/settings/workspace' : '/settings/voice'
+
   // 모바일: ESC로 닫기
   useEffect(() => {
     if (!mobileOpen) return
@@ -330,7 +335,11 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
 
         {/* 내비게이션 스크롤 영역 */}
         <nav className="flex-1 overflow-y-auto py-2" role="navigation" aria-label="주 내비게이션">
-          {NAV_GROUPS.map((group, groupIdx) => (
+          {NAV_GROUPS.map((group, groupIdx) => {
+            const items = group.items.filter((item) => isAdmin || !item.adminOnly)
+            if (items.length === 0) return null
+
+            return (
             <div key={group.label} className={groupIdx > 0 ? 'mt-1' : ''}>
               {/* 그룹 레이블 */}
               {!collapsed ? (
@@ -348,7 +357,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
 
               {/* 아이템 */}
               <div className="px-1.5">
-                {group.items.map((item) => (
+                {items.map((item) => (
                   <Tooltip
                     key={item.to}
                     label={collapsed ? item.label : ''}
@@ -388,7 +397,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
                 ))}
               </div>
             </div>
-          ))}
+            )
+          })}
         </nav>
 
         {/* 가장자리 핸들 토글 (데스크톱 전용) */}
@@ -418,7 +428,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen = false, onMob
           {/* 설정 */}
           <Tooltip label={collapsed ? '설정' : ''} placement="right" block>
             <NavLink
-              to="/settings/workspace"
+              to={settingsPath}
               className={({ isActive }) =>
                 clsx(
                   'flex items-center gap-2.5 w-full px-2 py-1.5 rounded text-sm transition-colors text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground',

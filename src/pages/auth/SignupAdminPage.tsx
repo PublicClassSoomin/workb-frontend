@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import clsx from 'clsx'
 import { login, signupAdmin } from '../../api/auth'
 import { setCurrentWorkspaceId } from '../../api/client'
+import { useAuth } from '../../context/AuthContext'
+
+type SignupTab = 'admin' | 'member'
 
 export default function SignupAdminPage() {
   const [name, setName] = useState('')
@@ -11,6 +15,7 @@ export default function SignupAdminPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const { saveUser } = useAuth()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -25,6 +30,13 @@ export default function SignupAdminPage() {
       setCurrentWorkspaceId(signup.workspace_id)
       localStorage.setItem('workb-invite-code', signup.invite_code)
       await login({ email, password })
+      saveUser({
+        id: signup.id,
+        email: signup.email,
+        name: signup.name,
+        role: signup.role,
+        workspace_id: signup.workspace_id,
+      })
       navigate('/onboarding/workspace')
     } catch (err) {
       setError(err instanceof Error ? err.message : '관리자 회원가입에 실패했습니다.')
@@ -37,6 +49,26 @@ export default function SignupAdminPage() {
     <div className="w-full max-w-sm">
       <h1 className="text-2xl font-bold text-foreground text-center mb-1">관리자 회원가입</h1>
       <p className="text-sm text-muted-foreground text-center mb-6">가입 후 워크스페이스를 생성할 수 있습니다.</p>
+
+      <div role="tablist" className="flex rounded-lg bg-muted p-1 mb-6">
+        {(['admin', 'member'] as SignupTab[]).map((signupTab) => (
+          <button
+            key={signupTab}
+            type="button"
+            role="tab"
+            aria-selected={signupTab === 'admin'}
+            onClick={() => {
+              if (signupTab === 'member') navigate('/signup/member')
+            }}
+            className={clsx(
+              'flex-1 py-1.5 rounded-md text-sm font-medium transition-colors',
+              signupTab === 'admin' ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {signupTab === 'admin' ? '관리자' : '멤버'}
+          </button>
+        ))}
+      </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div>

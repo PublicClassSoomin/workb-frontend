@@ -9,9 +9,24 @@ interface TokenResponse {
   token_type: string
 }
 
+export type UserRole = 'admin' | 'member' | 'viewer'
+
+export interface StoredUser {
+  id: number
+  email: string
+  name: string
+  role: UserRole
+  workspace_id: number | null
+}
+
 interface ApiRequestOptions extends RequestInit {
   skipAuthRefresh?: boolean
 }
+
+const ACCESS_TOKEN_KEY = 'workb-access-token'
+const REFRESH_TOKEN_KEY = 'workb-refresh-token'
+const CURRENT_USER_KEY = 'workb-current-user'
+const WORKSPACE_ID_KEY = 'workb-workspace-id'
 
 let refreshPromise: Promise<TokenResponse> | null = null
 
@@ -42,11 +57,11 @@ function formatErrorMessage(detail: unknown): string {
 }
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem('workb-access-token')
+  return localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem('workb-refresh-token')
+  return localStorage.getItem(REFRESH_TOKEN_KEY)
 }
 
 export function hasStoredSession(): boolean {
@@ -54,24 +69,102 @@ export function hasStoredSession(): boolean {
 }
 
 export function setAuthTokens(accessToken: string, refreshToken: string): void {
-  localStorage.setItem('workb-access-token', accessToken)
-  localStorage.setItem('workb-refresh-token', refreshToken)
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
   localStorage.setItem('workb-auth-mock', 'true')
 }
 
 export function clearAuthTokens(): void {
-  localStorage.removeItem('workb-access-token')
-  localStorage.removeItem('workb-refresh-token')
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  localStorage.removeItem(CURRENT_USER_KEY)
   localStorage.removeItem('workb-auth-mock')
 }
 
+export function getStoredUser(): StoredUser | null {
+  const raw = localStorage.getItem(CURRENT_USER_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as StoredUser
+  } catch {
+    localStorage.removeItem(CURRENT_USER_KEY)
+    return null
+  }
+}
+
+export function setStoredUser(user: StoredUser): void {
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user))
+
+  if (user.workspace_id) {
+    setCurrentWorkspaceId(user.workspace_id)
+  }
+}
+
 export function getCurrentWorkspaceId(): number {
-  const stored = Number(localStorage.getItem('workb-workspace-id'))
+  const stored = Number(localStorage.getItem(WORKSPACE_ID_KEY))
   return Number.isFinite(stored) && stored > 0 ? stored : 1
 }
 
 export function setCurrentWorkspaceId(workspaceId: number): void {
-  localStorage.setItem('workb-workspace-id', String(workspaceId))
+  localStorage.setItem(WORKSPACE_ID_KEY, String(workspaceId))
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const [, payload] = token.split('.')
+  if (!payload) return null
+
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
+    return JSON.parse(window.atob(padded)) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function isUserRole(value: unknown): value is UserRole {
+  return value === 'admin' || value === 'member' || value === 'viewer'
+}
+
+function readStringClaim(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function readWorkspaceIdClaim(value: unknown): number | null | undefined {
+  if (value === null) return null
+
+  const workspaceId = Number(value)
+  return Number.isFinite(workspaceId) && workspaceId > 0 ? workspaceId : undefined
+}
+
+export function syncStoredUserFromToken(
+  fallback: Partial<StoredUser> = {},
+): StoredUser | null {
+  const token = getAccessToken()
+  if (!token) return getStoredUser()
+
+  const payload = decodeJwtPayload(token)
+  const id = Number(payload?.sub ?? fallback.id)
+  const role = isUserRole(payload?.role) ? payload.role : fallback.role
+  const email = readStringClaim(payload?.email) ?? fallback.email
+  const name = readStringClaim(payload?.name) ?? fallback.name
+  const workspaceId = readWorkspaceIdClaim(payload?.workspace_id)
+    ?? fallback.workspace_id
+
+  if (!Number.isFinite(id) || !role) return getStoredUser()
+
+  const previous = getStoredUser()
+  const user: StoredUser = {
+    id,
+    email: email ?? previous?.email ?? '',
+    name: name ?? previous?.name ?? email ?? previous?.email ?? '사용자',
+    role,
+    workspace_id: workspaceId ?? previous?.workspace_id ?? getCurrentWorkspaceId(),
+  }
+
+  setStoredUser(user)
+  return user
 }
 
 function buildHeaders(
@@ -115,6 +208,7 @@ async function refreshAuthTokens(): Promise<TokenResponse> {
 
         const tokens = await response.json() as TokenResponse
         setAuthTokens(tokens.access_token, tokens.refresh_token)
+        syncStoredUserFromToken()
 
         return tokens
       })

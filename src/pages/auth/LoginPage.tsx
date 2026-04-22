@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { login } from '../../api/auth'
+import { validateInviteCode } from '../../api/workspace'
+import { useAuth } from '../../context/AuthContext'
 
 type Tab = 'admin' | 'member'
 
@@ -9,16 +11,54 @@ export default function LoginPage() {
   const [tab, setTab] = useState<Tab>('admin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
+  const [verifiedInviteCode, setVerifiedInviteCode] = useState('')
+  const [verifiedWorkspaceId, setVerifiedWorkspaceId] = useState<number | null>(null)
+  const [workspaceName, setWorkspaceName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [validatingInvite, setValidatingInvite] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
+  const { refreshSession, signOut } = useAuth()
   const returnTo = typeof location.state === 'object'
     && location.state
     && 'from' in location.state
     && typeof location.state.from === 'string'
     ? location.state.from
     : '/'
+
+  function normalizeInviteCode(value: string) {
+    return value.trim().toUpperCase()
+  }
+
+  async function handleValidateInviteCode() {
+    const normalizedCode = normalizeInviteCode(inviteCode)
+    if (normalizedCode.length < 6) {
+      setError('초대코드를 확인해주세요.')
+      return null
+    }
+
+    setValidatingInvite(true)
+    setError('')
+
+    try {
+      const invite = await validateInviteCode(normalizedCode)
+      setInviteCode(normalizedCode)
+      setVerifiedInviteCode(normalizedCode)
+      setVerifiedWorkspaceId(invite.workspace_id)
+      setWorkspaceName(invite.workspace_name)
+      return invite
+    } catch (err) {
+      setVerifiedInviteCode('')
+      setVerifiedWorkspaceId(null)
+      setWorkspaceName('')
+      setError(err instanceof Error ? err.message : '유효하지 않은 초대코드입니다.')
+      return null
+    } finally {
+      setValidatingInvite(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -31,7 +71,39 @@ export default function LoginPage() {
     setError('')
 
     try {
-      await login({ email, password })
+      const normalizedCode = normalizeInviteCode(inviteCode)
+      const invite = tab === 'member'
+        ? verifiedInviteCode === normalizedCode && verifiedWorkspaceId
+          ? { workspace_id: verifiedWorkspaceId, workspace_name: workspaceName, valid: true }
+          : await handleValidateInviteCode()
+        : null
+
+      if (tab === 'member' && !invite) return
+
+      await login(
+        { email, password },
+        invite ? { workspace_id: invite.workspace_id } : {},
+      )
+      const sessionUser = await refreshSession()
+
+      if (tab === 'admin' && sessionUser?.role !== 'admin') {
+        await signOut()
+        setError('관리자 계정으로 로그인해주세요.')
+        return
+      }
+
+      if (tab === 'member') {
+        const invalidMemberSession = !sessionUser
+          || sessionUser.role === 'admin'
+          || sessionUser.workspace_id !== invite?.workspace_id
+
+        if (invalidMemberSession) {
+          await signOut()
+          setError('초대코드와 계정 정보가 일치하지 않습니다.')
+          return
+        }
+      }
+
       navigate(returnTo, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.')
@@ -64,6 +136,42 @@ export default function LoginPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {tab === 'member' && (
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1" htmlFor="invite-code">초대코드</label>
+            <div className="flex gap-2">
+              <input
+                id="invite-code"
+                type="text"
+                value={inviteCode}
+                onChange={(e) => {
+                  const nextCode = e.target.value.toUpperCase()
+                  setInviteCode(nextCode)
+                  if (normalizeInviteCode(nextCode) !== verifiedInviteCode) {
+                    setVerifiedInviteCode('')
+                    setVerifiedWorkspaceId(null)
+                    setWorkspaceName('')
+                  }
+                }}
+                placeholder="WORKB-XXXXXX"
+                maxLength={20}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-card px-3 font-mono text-sm tracking-widest outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+              />
+              <button
+                type="button"
+                onClick={handleValidateInviteCode}
+                disabled={validatingInvite || loading}
+                className="h-10 shrink-0 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {validatingInvite ? '확인 중...' : '코드 확인'}
+              </button>
+            </div>
+            {workspaceName && (
+              <p className="text-mini text-accent mt-1">{workspaceName} 워크스페이스로 로그인합니다.</p>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-foreground mb-1" htmlFor="email">이메일</label>
           <input
@@ -125,8 +233,11 @@ export default function LoginPage() {
         <Link to="/reset-password" className="hover:text-foreground transition-colors">비밀번호를 잊으셨나요?</Link>
         <span>
           계정이 없으신가요?{' '}
-          <Link to="/signup/admin" className="text-accent font-medium hover:underline">
-            {tab === 'admin' ? '관리자 회원가입' : '회원가입'}
+          <Link
+            to={tab === 'admin' ? '/signup/admin' : '/signup/member'}
+            className="text-accent font-medium hover:underline"
+          >
+            {tab === 'admin' ? '관리자 회원가입' : '멤버 회원가입'}
           </Link>
         </span>
       </div>
