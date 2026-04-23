@@ -5,7 +5,6 @@ import {
   History,
   Video,
   Plus,
-  Settings,
   Mic,
   Users,
   LayoutGrid,
@@ -20,7 +19,7 @@ import {
   Link2,
   Gauge,
   Building2,
-  KeyRound,
+  UserRound,
   X,
   CalendarDays,
   ChevronDown,
@@ -333,8 +332,7 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Link2,
         adminOnly: true,
       },
-      { to: "/settings/device", label: "장비 설정", icon: Gauge },
-      { to: "/settings/password", label: "비밀번호 변경", icon: KeyRound },
+      { to: "/settings/device", label: "장비 설정", icon: Gauge, adminOnly: true },
     ],
   },
 ];
@@ -353,7 +351,7 @@ export default function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const { isAdmin } = useAuth();
-  const settingsPath = isAdmin ? "/settings/workspace" : "/settings/voice";
+  const settingsPath = "/settings/my";
 
   // 모바일: ESC로 닫기
   useEffect(() => {
@@ -394,25 +392,29 @@ export default function Sidebar({
         {/* 헤더 — 워크스페이스 셀렉터 */}
         <div
           className={clsx(
-            "flex items-center gap-2 px-2.5 py-2.5 border-b border-sidebar-border shrink-0",
-            collapsed ? "justify-center" : "justify-between"
+            "flex gap-2 border-b border-sidebar-border shrink-0",
+            collapsed
+              ? "flex-col items-center justify-center px-1.5 py-2"
+              : "items-center justify-between px-2.5 py-2.5"
           )}
         >
           {/* 로고 (collapsed 시에는 홈 링크 역할) */}
           {collapsed ? (
-            <Tooltip label="홈으로 이동" placement="right" block={false}>
-              <Link
-                to="/"
-                className="flex items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-                aria-label="홈으로 이동"
-              >
-                <img
-                  src="/brand/workb-logo.png"
-                  alt="Workb 로고"
-                  className="w-6 h-6 rounded object-cover shrink-0"
-                />
-              </Link>
-            </Tooltip>
+            <>
+              <Tooltip label="홈으로 이동" placement="right" block={false}>
+                <Link
+                  to="/"
+                  className="flex items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                  aria-label="홈으로 이동"
+                >
+                  <img
+                    src="/brand/workb-logo.png"
+                    alt="Workb 로고"
+                    className="w-6 h-6 rounded object-cover shrink-0"
+                  />
+                </Link>
+              </Tooltip>
+            </>
           ) : (
             /* 펼쳐진 상태: 로고 + 워크스페이스 셀렉터 */
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -432,18 +434,20 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* 데스크톱 전용: 헤더 접기 버튼 (펼쳐진 상태에서만 노출) */}
-          {!collapsed && (
-            <button
-              onClick={onToggle}
-              aria-label="사이드바 접기"
-              aria-controls="nav_side_menu"
-              aria-expanded={true}
-              className="hidden md:flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors shrink-0"
-            >
+          {/* 데스크톱 전용: 헤더 접기/펼치기 버튼 */}
+          <button
+            onClick={onToggle}
+            aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
+            aria-controls="nav_side_menu"
+            aria-expanded={!collapsed}
+            className="hidden md:flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground transition-colors shrink-0"
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={14} aria-hidden="true" />
+            ) : (
               <PanelLeftClose size={14} aria-hidden="true" />
-            </button>
-          )}
+            )}
+          </button>
         </div>
 
         {/* 내비게이션 스크롤 영역 */}
@@ -536,7 +540,7 @@ export default function Sidebar({
           aria-expanded={!collapsed}
           className={clsx(
             "hidden md:flex absolute top-1/2 -translate-y-1/2 translate-x-1/2 z-10",
-            "items-center justify-center w-3.5 h-8 rounded-r-md",
+            "items-center justify-center w-5 h-9 rounded-r-md",
             "bg-sidebar border border-sidebar-border",
             "text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground",
             "transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent",
@@ -544,16 +548,16 @@ export default function Sidebar({
           )}
         >
           {collapsed ? (
-            <ChevronsRight size={11} aria-hidden="true" />
+            <ChevronsRight size={13} aria-hidden="true" />
           ) : (
-            <ChevronsLeft size={11} aria-hidden="true" />
+            <ChevronsLeft size={13} aria-hidden="true" />
           )}
         </button>
 
         {/* 푸터 */}
         <div className="border-t border-sidebar-border py-1.5 px-1.5 shrink-0">
           {/* 설정 */}
-          <Tooltip label={collapsed ? "설정" : ""} placement="right" block>
+          <Tooltip label={collapsed ? "마이페이지" : ""} placement="right" block>
             <NavLink
               to={settingsPath}
               className={({ isActive }) =>
@@ -564,8 +568,8 @@ export default function Sidebar({
                 )
               }
             >
-              <Settings size={15} className="shrink-0" aria-hidden="true" />
-              {!collapsed && <span className="flex-1">설정</span>}
+              <UserRound size={15} className="shrink-0" aria-hidden="true" />
+              {!collapsed && <span className="flex-1">마이페이지</span>}
             </NavLink>
           </Tooltip>
 

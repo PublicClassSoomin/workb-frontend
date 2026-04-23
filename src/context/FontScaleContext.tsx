@@ -24,6 +24,7 @@ function readStored(): FontScale {
 type FontScaleContextValue = {
   fontScale: FontScale
   setFontScale: (next: FontScale) => void
+  previewFontScale: (next: FontScale) => void
 }
 
 const FontScaleContext = createContext<FontScaleContextValue | null>(null)
@@ -42,12 +43,16 @@ export function FontScaleProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const previewFontScale = useCallback((next: FontScale) => {
+    setFontScaleState(next)
+  }, [])
+
   useEffect(() => {
     document.documentElement.dataset.fontScale = fontScale
   }, [fontScale])
 
   return (
-    <FontScaleContext.Provider value={{ fontScale, setFontScale }}>
+    <FontScaleContext.Provider value={{ fontScale, setFontScale, previewFontScale }}>
       {children}
     </FontScaleContext.Provider>
   )

@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import clsx from "clsx";
 import { Image as ImageIcon, Save, Upload, X } from "lucide-react";
-import { useAccentColor } from "../../hooks/useAccentColor";
-import { useFontScale } from "../../context/FontScaleContext";
 import { getCurrentWorkspaceId } from "../../api/client";
 import { getWorkspace, updateWorkspace } from "../../api/workspace";
 
@@ -15,16 +12,6 @@ const SUMMARY_STYLES = [
 const LANGUAGES = ["한국어", "English", "日本語", "中文"];
 const DEFAULT_LOGO_URL = "/brand/workb-logo.png";
 const MAX_LOGO_SIZE = 1024 * 1024;
-
-const FONT_SCALE_OPTIONS: {
-  id: "sm" | "md" | "lg";
-  label: string;
-  hint: string;
-}[] = [
-  { id: "sm", label: "작게", hint: "16px 기준" },
-  { id: "md", label: "보통", hint: "18px 기준" },
-  { id: "lg", label: "크게", hint: "20px 기준" },
-];
 
 function getLocalLogoKey(workspaceId: number): string {
   return `workb-workspace-logo-${workspaceId}`;
@@ -50,14 +37,6 @@ export default function WorkspaceSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const {
-    accentPreset,
-    setAccentPreset,
-    accentPalettes,
-    accentAsMain,
-    setAccentAsMain,
-  } = useAccentColor();
-  const { fontScale, setFontScale } = useFontScale();
   const workspaceId = getCurrentWorkspaceId();
 
   useEffect(() => {
@@ -317,130 +296,6 @@ export default function WorkspaceSettingsPage() {
                 <span className="text-sm text-foreground">{style}</span>
               </label>
             ))}
-          </div>
-        </div>
-
-        {/* Font size */}
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">
-            글자 크기
-          </label>
-          <p className="text-mini text-muted-foreground mb-2">
-            화면 전체 글자·간격(rem)이 함께 조정됩니다. 선택 즉시 반영됩니다.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {FONT_SCALE_OPTIONS.map((opt) => {
-              const selected = fontScale === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setFontScale(opt.id)}
-                  className={`flex flex-col items-start gap-0.5 min-w-[5.5rem] px-3 py-2 rounded-lg border text-left transition-colors ${
-                    selected
-                      ? "border-accent bg-accent-subtle text-accent"
-                      : "border-border text-muted-foreground hover:border-foreground"
-                  }`}
-                  aria-pressed={selected}
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {opt.label}
-                  </span>
-                  <span className="text-micro text-muted-foreground">
-                    {opt.hint}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Accent color */}
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">
-            포인트 색상
-          </label>
-          <p className="text-mini text-muted-foreground mb-2">
-            앱 전체 강조색(버튼·뱃지·활성 상태)에 즉시 반영됩니다.
-          </p>
-
-          <div className="rounded-lg border border-border bg-card/50 px-3 py-3 mb-3 space-y-2">
-            <div>
-              <span
-                className="block text-sm font-medium text-foreground"
-                id="accent-main-label"
-              >
-                메인 화면 톤
-              </span>
-              <p className="text-mini text-muted-foreground mt-0.5">
-                기본은 중립 배경입니다. 메인 톤은 라이트 모드에서 밝은 파스텔
-                틴트 + 짙은 글자, 다크 모드에서는 진한 포인트 톤 + 밝은 글자로
-                맞춥니다.
-              </p>
-            </div>
-
-            <div
-              role="group"
-              aria-labelledby="accent-main-label"
-              className="flex w-full max-w-md rounded-xl border border-border bg-muted/40 p-1 gap-1"
-            >
-              <button
-                type="button"
-                onClick={() => setAccentAsMain(false)}
-                aria-pressed={!accentAsMain}
-                className={clsx(
-                  "flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                  !accentAsMain
-                    ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                )}
-              >
-                기본
-              </button>
-              <button
-                type="button"
-                onClick={() => setAccentAsMain(true)}
-                aria-pressed={accentAsMain}
-                className={clsx(
-                  "flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                  accentAsMain
-                    ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                )}
-              >
-                메인 톤
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(accentPalettes).map(([key, palette]) => {
-              const selected = accentPreset === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() =>
-                    setAccentPreset(key as keyof typeof accentPalettes)
-                  }
-                  className={`flex items-center gap-2 h-9 px-3 rounded-lg border text-sm transition-colors ${
-                    selected
-                      ? "border-accent bg-accent-subtle text-accent"
-                      : "border-border text-muted-foreground hover:border-foreground"
-                  }`}
-                  aria-pressed={selected}
-                >
-                  <span
-                    className="w-4 h-4 rounded-full border border-black/10"
-                    style={{ backgroundColor: palette.swatch }}
-                    aria-hidden
-                  />
-                  <span>{palette.label}</span>
-                </button>
-              );
-            })}
           </div>
         </div>
 
