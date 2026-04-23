@@ -44,6 +44,7 @@ import VoiceSettingsPage from './pages/settings/VoiceSettingsPage'
 import IntegrationsSettingsPage from './pages/settings/IntegrationsSettingsPage'
 import DeviceSettingsPage from './pages/settings/DeviceSettingsPage'
 import PasswordSettingsPage from './pages/settings/PasswordSettingsPage'
+import MyPage from './pages/settings/MyPage'
 
 export default function App() {
   return (
@@ -109,15 +110,17 @@ export default function App() {
           <Route path="meetings/:meetingId/export" element={<ExportPage />} />
 
           {/* 설정 */}
+          <Route path="settings" element={<Navigate to="/settings/my" replace />} />
+          <Route path="settings/my" element={<MyPage />} />
+          <Route path="settings/password" element={<PasswordSettingsPage />} />
           <Route element={<RequireAdminRoute />}>
             <Route path="settings/workspace" element={<WorkspaceSettingsPage />} />
             <Route path="settings/members" element={<MembersSettingsPage />} />
             <Route path="settings/departments" element={<DepartmentsSettingsPage />} />
             <Route path="settings/integrations" element={<IntegrationsSettingsPage />} />
+            <Route path="settings/device" element={<DeviceSettingsPage />} />
           </Route>
           <Route path="settings/voice" element={<VoiceSettingsPage />} />
-          <Route path="settings/device" element={<DeviceSettingsPage />} />
-          <Route path="settings/password" element={<PasswordSettingsPage />} />
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />
