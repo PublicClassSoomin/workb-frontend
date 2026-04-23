@@ -1,29 +1,333 @@
-import { useState } from 'react'
-import { Mic, Camera, Monitor, Check, Volume2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, Camera, Check, Mic, Monitor, RefreshCw, Save, Volume2 } from 'lucide-react'
 
-const MOCK_MICS = ['내장 마이크 (MacBook Air)', 'Blue Yeti USB Microphone', 'AirPods Pro']
-const MOCK_CAMERAS = ['내장 카메라 (FaceTime HD)', 'Logitech C920']
+const STORAGE_KEY = 'workb-device-settings'
+
+interface StoredDeviceSettings {
+  isMainDevice: boolean
+  selectedMicId: string
+  selectedCameraId: string
+  micEnabled: boolean
+  cameraEnabled: boolean
+}
+
+function readStoredSettings(): Partial<StoredDeviceSettings> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) as Partial<StoredDeviceSettings> : {}
+  } catch {
+    localStorage.removeItem(STORAGE_KEY)
+    return {}
+  }
+}
+
+function getDeviceLabel(device: MediaDeviceInfo, index: number, fallback: string): string {
+  return device.label || `${fallback} ${index + 1}`
+}
+
+interface ToggleSwitchProps {
+  checked: boolean
+  label: string
+  onChange: () => void
+}
+
+function ToggleSwitch({ checked, label, onChange }: ToggleSwitchProps) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${checked ? 'bg-accent' : 'bg-border'}`}
+      aria-label={label}
+      aria-pressed={checked}
+    >
+      <span
+        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`}
+      />
+    </button>
+  )
+}
 
 export default function DeviceSettingsPage() {
-  const [isMainDevice, setIsMainDevice] = useState(true)
-  const [selectedMic, setSelectedMic] = useState(MOCK_MICS[0])
-  const [selectedCamera, setSelectedCamera] = useState(MOCK_CAMERAS[0])
-  const [cameraEnabled, setCameraEnabled] = useState(true)
+  const stored = useRef(readStoredSettings())
+  const [isMainDevice, setIsMainDevice] = useState(stored.current.isMainDevice ?? true)
+  const [selectedMicId, setSelectedMicId] = useState(stored.current.selectedMicId ?? '')
+  const [selectedCameraId, setSelectedCameraId] = useState(stored.current.selectedCameraId ?? '')
+  const [micEnabled, setMicEnabled] = useState(stored.current.micEnabled ?? true)
+  const [cameraEnabled, setCameraEnabled] = useState(stored.current.cameraEnabled ?? true)
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([])
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
+  const [loadingDevices, setLoadingDevices] = useState(true)
+  const [permissionError, setPermissionError] = useState('')
   const [testing, setTesting] = useState(false)
+  const [inputLevel, setInputLevel] = useState(0)
+  const [saved, setSaved] = useState(false)
 
-  function handleMicTest() {
-    setTesting(true)
-    // TODO: test microphone
-    console.log('TODO: test microphone', selectedMic)
-    setTimeout(() => setTesting(false), 3000)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const animationRef = useRef<number | null>(null)
+  const testTimerRef = useRef<number | null>(null)
+  const savedTimerRef = useRef<number | null>(null)
+
+  const currentDeviceName = typeof navigator === 'undefined'
+    ? '현재 브라우저'
+    : navigator.platform || '현재 브라우저'
+
+  function stopCameraPreview() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+    cameraStreamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
   }
+
+  function stopMicTest() {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+    if (testTimerRef.current) {
+      window.clearTimeout(testTimerRef.current)
+      testTimerRef.current = null
+    }
+
+    micStreamRef.current?.getTracks().forEach((track) => track.stop())
+    micStreamRef.current = null
+
+    void audioContextRef.current?.close().catch(() => undefined)
+    audioContextRef.current = null
+
+    setTesting(false)
+    setInputLevel(0)
+  }
+
+  async function loadDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setPermissionError('이 브라우저에서는 장치 설정을 지원하지 않습니다.')
+      setLoadingDevices(false)
+      return
+    }
+
+    setLoadingDevices(true)
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const nextMicrophones = devices.filter((device) => device.kind === 'audioinput')
+      const nextCameras = devices.filter((device) => device.kind === 'videoinput')
+
+      setMicrophones(nextMicrophones)
+      setCameras(nextCameras)
+
+      setSelectedMicId((current) => (
+        nextMicrophones.some((device) => device.deviceId === current)
+          ? current
+          : nextMicrophones.find((device) => device.deviceId === stored.current.selectedMicId)?.deviceId
+            ?? nextMicrophones[0]?.deviceId
+            ?? ''
+      ))
+      setSelectedCameraId((current) => (
+        nextCameras.some((device) => device.deviceId === current)
+          ? current
+          : nextCameras.find((device) => device.deviceId === stored.current.selectedCameraId)?.deviceId
+            ?? nextCameras[0]?.deviceId
+            ?? ''
+      ))
+    } catch (err) {
+      setPermissionError(err instanceof Error ? err.message : '장치 목록을 불러오지 못했습니다.')
+    } finally {
+      setLoadingDevices(false)
+    }
+  }
+
+  async function requestDevicePermission() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setPermissionError('이 브라우저에서는 장치 권한 요청을 지원하지 않습니다.')
+      return
+    }
+
+    setPermissionError('')
+    const streams: MediaStream[] = []
+
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      streams.push(audioStream)
+    } catch {
+      /* 마이크가 없거나 권한이 거부될 수 있습니다. */
+    }
+
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+      streams.push(videoStream)
+    } catch {
+      /* 카메라가 없거나 권한이 거부될 수 있습니다. */
+    }
+
+    streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()))
+
+    if (streams.length === 0) {
+      setPermissionError('장치 권한이 거부되었거나 사용할 수 있는 장비가 없습니다.')
+    }
+
+    await loadDevices()
+  }
+
+  async function handleMicTest() {
+    if (testing) {
+      stopMicTest()
+      return
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setPermissionError('이 브라우저에서는 마이크 테스트를 지원하지 않습니다.')
+      return
+    }
+
+    setTesting(true)
+    setPermissionError('')
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: selectedMicId ? { deviceId: { exact: selectedMicId } } : true,
+        video: false,
+      })
+      const AudioContextCtor = window.AudioContext
+      const audioContext = new AudioContextCtor()
+      const analyser = audioContext.createAnalyser()
+      const source = audioContext.createMediaStreamSource(stream)
+      const data = new Uint8Array(analyser.frequencyBinCount)
+
+      analyser.fftSize = 256
+      source.connect(analyser)
+      micStreamRef.current = stream
+      audioContextRef.current = audioContext
+
+      const updateLevel = () => {
+        analyser.getByteTimeDomainData(data)
+        let peak = 0
+
+        for (const value of data) {
+          peak = Math.max(peak, Math.abs(value - 128) / 128)
+        }
+
+        setInputLevel(Math.min(100, Math.round(peak * 180)))
+        animationRef.current = requestAnimationFrame(updateLevel)
+      }
+
+      updateLevel()
+      testTimerRef.current = window.setTimeout(stopMicTest, 5000)
+      await loadDevices()
+    } catch (err) {
+      setPermissionError(err instanceof Error ? err.message : '마이크를 사용할 수 없습니다.')
+      stopMicTest()
+    }
+  }
+
+  function saveSettings() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      isMainDevice,
+      selectedMicId,
+      selectedCameraId,
+      micEnabled,
+      cameraEnabled,
+    }))
+
+    setSaved(true)
+    if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current)
+    savedTimerRef.current = window.setTimeout(() => setSaved(false), 1800)
+  }
+
+  useEffect(() => {
+    void loadDevices()
+
+    const handleDeviceChange = () => void loadDevices()
+    navigator.mediaDevices?.addEventListener?.('devicechange', handleDeviceChange)
+
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange)
+      stopCameraPreview()
+      stopMicTest()
+      if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!micEnabled) {
+      stopMicTest()
+    }
+  }, [micEnabled])
+
+  useEffect(() => {
+    if (!cameraEnabled || !selectedCameraId || !navigator.mediaDevices?.getUserMedia) {
+      stopCameraPreview()
+      return
+    }
+
+    let cancelled = false
+
+    async function startCameraPreview() {
+      stopCameraPreview()
+      setPermissionError('')
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { deviceId: { exact: selectedCameraId } },
+        })
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+
+        cameraStreamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+      } catch (err) {
+        if (!cancelled) {
+          setPermissionError(err instanceof Error ? err.message : '웹캠을 시작하지 못했습니다.')
+        }
+      }
+    }
+
+    void startCameraPreview()
+
+    return () => {
+      cancelled = true
+      stopCameraPreview()
+    }
+  }, [cameraEnabled, selectedCameraId])
 
   return (
     <div className="max-w-xl mx-auto px-4 sm:px-6 py-6">
-      <h1 className="text-xl font-semibold text-foreground mb-1">장비 설정</h1>
-      <p className="text-sm text-muted-foreground mb-6">AI 챗봇 및 STT를 실행할 장비와 입력 장치를 설정합니다.</p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground mb-1">장비 설정</h1>
+          <p className="text-sm text-muted-foreground">AI 챗봇 및 STT를 실행할 장비와 입력 장치를 설정합니다.</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+          <button
+            type="button"
+            onClick={() => void requestDevicePermission()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-accent/40 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent-subtle"
+          >
+            <Check size={14} />
+            장치 권한 허용
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadDevices()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm transition-colors hover:bg-muted"
+          >
+            <RefreshCw size={14} />
+            새로고침
+          </button>
+        </div>
+      </div>
 
-      {/* Main device designation */}
+      {permissionError && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          <AlertCircle size={15} className="mt-0.5 shrink-0" />
+          <span>{permissionError}</span>
+        </div>
+      )}
+
       <div className="p-4 rounded-xl border border-border bg-card mb-5">
         <div className="flex items-start gap-3 mb-3">
           <Monitor size={20} className="text-accent mt-0.5 shrink-0" />
@@ -32,89 +336,142 @@ export default function DeviceSettingsPage() {
             <p className="text-mini text-muted-foreground">AI 챗봇 패널과 STT는 메인으로 지정된 장비 1대에서만 실행됩니다.</p>
           </div>
         </div>
-        <div className={`flex items-center gap-2 p-3 rounded-lg border transition-colors cursor-pointer ${isMainDevice ? 'border-accent bg-accent-subtle' : 'border-border hover:border-accent/50'}`}
-          onClick={() => setIsMainDevice((v) => !v)}>
-          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isMainDevice ? 'border-accent bg-accent' : 'border-border'}`}>
-            {isMainDevice && <Check size={10} className="text-white" strokeWidth={3} />}
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-foreground">이 장비를 메인으로 설정</p>
-            <p className="text-mini text-muted-foreground">현재 기기: MacBook Air (김수민)</p>
-          </div>
-          {isMainDevice && <span className="px-2 py-0.5 rounded-full bg-accent text-accent-foreground text-micro font-medium">메인</span>}
-        </div>
-      </div>
-
-      {/* Microphone */}
-      <div className="p-4 rounded-xl border border-border bg-card mb-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Mic size={16} className="text-accent" />
-          <h2 className="text-sm font-semibold text-foreground">마이크 설정</h2>
-        </div>
-        <div className="mb-3">
-          <label className="block text-mini font-medium text-muted-foreground mb-1.5">마이크 장치 선택</label>
-          <select
-            value={selectedMic}
-            onChange={(e) => setSelectedMic(e.target.value)}
-            className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm outline-none"
-          >
-            {MOCK_MICS.map((mic) => <option key={mic} value={mic}>{mic}</option>)}
-          </select>
-        </div>
-        {/* Input level bar */}
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-mini text-muted-foreground">입력 레벨</span>
-            <Volume2 size={12} className="text-muted-foreground" />
-          </div>
-          <div className="h-2 rounded-full bg-border overflow-hidden">
-            <div
-              className={`h-full rounded-full bg-green-500 transition-all duration-200 ${testing ? 'animate-pulse' : ''}`}
-              style={{ width: testing ? '65%' : '10%' }}
-            />
-          </div>
-        </div>
         <button
-          onClick={handleMicTest}
-          disabled={testing}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors disabled:opacity-50"
+          type="button"
+          aria-pressed={isMainDevice}
+          onClick={() => setIsMainDevice((value) => !value)}
+          className={`flex w-full items-center gap-2 rounded-lg border p-3 text-left transition-colors ${isMainDevice ? 'border-accent bg-accent-subtle' : 'border-border hover:border-accent/50'}`}
         >
-          <Mic size={13} className={testing ? 'text-red-500 animate-pulse' : ''} />
-          {testing ? '테스트 중...' : '마이크 테스트'}
+          <span className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${isMainDevice ? 'border-accent bg-accent' : 'border-border'}`}>
+            {isMainDevice && <Check size={10} className="text-white" strokeWidth={3} />}
+          </span>
+          <span className="flex-1">
+            <span className="block text-sm font-medium text-foreground">이 장비를 메인으로 설정</span>
+            <span className="block text-mini text-muted-foreground">현재 기기: {currentDeviceName}</span>
+          </span>
+          {isMainDevice && <span className="rounded-full bg-accent px-2 py-0.5 text-micro font-medium text-accent-foreground">메인</span>}
         </button>
       </div>
 
-      {/* Camera */}
-      <div className="p-4 rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+      <div className="p-4 rounded-xl border border-border bg-card mb-5">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Mic size={16} className="text-accent" />
+            <h2 className="text-sm font-semibold text-foreground">마이크 설정</h2>
+          </div>
+          <ToggleSwitch
+            checked={micEnabled}
+            label="마이크 켜기/끄기"
+            onChange={() => setMicEnabled((value) => !value)}
+          />
+        </div>
+        {micEnabled && (
+          <>
+            <div className="mb-3">
+              <label className="block text-mini font-medium text-muted-foreground mb-1.5">마이크 장치 선택</label>
+              <select
+                value={selectedMicId}
+                onChange={(event) => setSelectedMicId(event.target.value)}
+                disabled={loadingDevices || microphones.length === 0}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {microphones.length === 0 ? (
+                  <option value="">{loadingDevices ? '장치 목록을 불러오는 중...' : '사용 가능한 마이크가 없습니다.'}</option>
+                ) : microphones.map((mic, index) => (
+                  <option key={mic.deviceId || index} value={mic.deviceId}>
+                    {getDeviceLabel(mic, index, '마이크')}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-mini text-muted-foreground">입력 레벨</span>
+                <Volume2 size={12} className="text-muted-foreground" />
+              </div>
+              <div className="h-2 rounded-full bg-border overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-green-500 transition-all duration-100"
+                  style={{ width: `${testing ? Math.max(inputLevel, 4) : 0}%` }}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleMicTest}
+              disabled={microphones.length === 0}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Mic size={13} className={testing ? 'text-red-500 animate-pulse' : ''} />
+              {testing ? '테스트 중지' : '마이크 테스트'}
+            </button>
+          </>
+        )}
+        {!micEnabled && (
+          <p className="text-mini text-muted-foreground">
+            마이크는 꺼져 있습니다. 회의 중 STT 기능이 필요하면 다시 켜세요.
+          </p>
+        )}
+      </div>
+
+      <div className="p-4 rounded-xl border border-border bg-card mb-5">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Camera size={16} className="text-accent" />
             <h2 className="text-sm font-semibold text-foreground">웹캠 설정</h2>
           </div>
-          {/* Toggle */}
-          <button
-            onClick={() => setCameraEnabled((v) => !v)}
-            className={`relative w-10 h-5 rounded-full transition-colors ${cameraEnabled ? 'bg-accent' : 'bg-border'}`}
-            aria-label="웹캠 켜기/끄기"
-          >
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${cameraEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-          </button>
+          <ToggleSwitch
+            checked={cameraEnabled}
+            label="웹캠 켜기/끄기"
+            onChange={() => setCameraEnabled((value) => !value)}
+          />
         </div>
         {cameraEnabled && (
-          <div className="mb-3">
-            <label className="block text-mini font-medium text-muted-foreground mb-1.5">웹캠 장치 선택</label>
-            <select
-              value={selectedCamera}
-              onChange={(e) => setSelectedCamera(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm outline-none"
-            >
-              {MOCK_CAMERAS.map((cam) => <option key={cam} value={cam}>{cam}</option>)}
-            </select>
-          </div>
+          <>
+            <div className="mb-3">
+              <label className="block text-mini font-medium text-muted-foreground mb-1.5">웹캠 장치 선택</label>
+              <select
+                value={selectedCameraId}
+                onChange={(event) => setSelectedCameraId(event.target.value)}
+                disabled={loadingDevices || cameras.length === 0}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cameras.length === 0 ? (
+                  <option value="">{loadingDevices ? '장치 목록을 불러오는 중...' : '사용 가능한 웹캠이 없습니다.'}</option>
+                ) : cameras.map((camera, index) => (
+                  <option key={camera.deviceId || index} value={camera.deviceId}>
+                    {getDeviceLabel(camera, index, '웹캠')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="aspect-video overflow-hidden rounded-lg border border-border bg-muted">
+              {selectedCameraId ? (
+                <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">웹캠을 선택하세요.</div>
+              )}
+            </div>
+          </>
         )}
-        <p className="text-mini text-muted-foreground">
-          웹캠은 선택 사항입니다. 회의 중 사진 촬영 후 회의록에 첨부할 수 있습니다.
-        </p>
+        {!cameraEnabled && (
+          <p className="text-mini text-muted-foreground">
+            웹캠은 꺼져 있습니다. 회의 중 사진 첨부 기능이 필요하면 다시 켜세요.
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
+        {saved && <span className="text-sm text-accent">저장되었습니다.</span>}
+        <button
+          type="button"
+          onClick={saveSettings}
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+        >
+          <Save size={15} />
+          저장
+        </button>
       </div>
     </div>
   )
