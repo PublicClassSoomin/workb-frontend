@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { login, signupMember } from '../../api/auth'
 import { setCurrentWorkspaceId } from '../../api/client'
@@ -9,7 +9,8 @@ import { useAuth } from '../../context/AuthContext'
 type SignupTab = 'admin' | 'member'
 
 export default function SignupMemberPage() {
-  const [inviteCode, setInviteCode] = useState('')
+  const [searchParams] = useSearchParams()
+  const [inviteCode, setInviteCode] = useState(() => searchParams.get('invite')?.toUpperCase() ?? '')
   const [verifiedInviteCode, setVerifiedInviteCode] = useState('')
   const [verifiedWorkspaceId, setVerifiedWorkspaceId] = useState<number | null>(null)
   const [workspaceName, setWorkspaceName] = useState('')

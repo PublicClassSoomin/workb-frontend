@@ -56,6 +56,15 @@ export interface ChangePasswordPayload {
   new_password: string
 }
 
+export interface RequestPasswordResetPayload {
+  email: string
+}
+
+export interface ConfirmPasswordResetPayload {
+  token: string
+  new_password: string
+}
+
 export function signupAdmin(payload: AdminSignupPayload): Promise<AdminSignupResponse> {
   return apiRequest<AdminSignupResponse>('/users/signup/admin', {
     method: 'POST',
@@ -73,6 +82,22 @@ export function signupMember(payload: MemberSignupPayload): Promise<UserResponse
 export function changePassword(payload: ChangePasswordPayload): Promise<MessageResponse> {
   return apiRequest<MessageResponse>('/users/password-change', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function requestPasswordReset(payload: RequestPasswordResetPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-reset', {
+    method: 'POST',
+    skipAuthRefresh: true,
+    body: JSON.stringify(payload),
+  })
+}
+
+export function confirmPasswordReset(payload: ConfirmPasswordResetPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-reset/confirm', {
+    method: 'POST',
+    skipAuthRefresh: true,
     body: JSON.stringify(payload),
   })
 }
