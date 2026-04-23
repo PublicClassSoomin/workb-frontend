@@ -30,6 +30,7 @@ export interface AdminSignupResponse {
   role: 'admin'
   workspace_id: number
   invite_code: string
+  welcome_email_sent?: boolean
 }
 
 export interface MemberSignupPayload {
@@ -46,6 +47,24 @@ export interface UserResponse {
   role: 'admin' | 'member' | 'viewer'
 }
 
+interface MessageResponse {
+  message: string
+}
+
+export interface ChangePasswordPayload {
+  current_password: string
+  new_password: string
+}
+
+export interface RequestPasswordResetPayload {
+  email: string
+}
+
+export interface ConfirmPasswordResetPayload {
+  token: string
+  new_password: string
+}
+
 export function signupAdmin(payload: AdminSignupPayload): Promise<AdminSignupResponse> {
   return apiRequest<AdminSignupResponse>('/users/signup/admin', {
     method: 'POST',
@@ -56,6 +75,29 @@ export function signupAdmin(payload: AdminSignupPayload): Promise<AdminSignupRes
 export function signupMember(payload: MemberSignupPayload): Promise<UserResponse> {
   return apiRequest<UserResponse>('/users/signup/member', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function changePassword(payload: ChangePasswordPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-change', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function requestPasswordReset(payload: RequestPasswordResetPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-reset', {
+    method: 'POST',
+    skipAuthRefresh: true,
+    body: JSON.stringify(payload),
+  })
+}
+
+export function confirmPasswordReset(payload: ConfirmPasswordResetPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-reset/confirm', {
+    method: 'POST',
+    skipAuthRefresh: true,
     body: JSON.stringify(payload),
   })
 }
