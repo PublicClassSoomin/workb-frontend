@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { login, signupMember } from '../../api/auth'
 import { setCurrentWorkspaceId } from '../../api/client'
@@ -9,13 +9,15 @@ import { useAuth } from '../../context/AuthContext'
 type SignupTab = 'admin' | 'member'
 
 export default function SignupMemberPage() {
-  const [inviteCode, setInviteCode] = useState('')
+  const [searchParams] = useSearchParams()
+  const [inviteCode, setInviteCode] = useState(() => searchParams.get('invite')?.toUpperCase() ?? '')
   const [verifiedInviteCode, setVerifiedInviteCode] = useState('')
   const [verifiedWorkspaceId, setVerifiedWorkspaceId] = useState<number | null>(null)
   const [workspaceName, setWorkspaceName] = useState('')
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [validatingInvite, setValidatingInvite] = useState(false)
@@ -56,8 +58,9 @@ export default function SignupMemberPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!inviteCode || !email || !name || !password) { setError('모든 필드를 입력해주세요.'); return }
+    if (!inviteCode || !email || !name || !password || !confirmPassword) { setError('모든 필드를 입력해주세요.'); return }
     if (inviteCode.length < 6) { setError('초대코드를 확인해주세요.'); return }
+    if (password !== confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return }
 
     setLoading(true)
     setError('')
@@ -179,6 +182,16 @@ export default function SignupMemberPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="8자 이상"
+            className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">비밀번호 확인</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="비밀번호를 다시 입력"
             className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
           />
         </div>

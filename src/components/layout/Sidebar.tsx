@@ -20,6 +20,7 @@ import {
   Link2,
   Gauge,
   Building2,
+  KeyRound,
   X,
   CalendarDays,
   ChevronDown,
@@ -333,6 +334,7 @@ const NAV_GROUPS: NavGroup[] = [
         adminOnly: true,
       },
       { to: "/settings/device", label: "장비 설정", icon: Gauge },
+      { to: "/settings/password", label: "비밀번호 변경", icon: KeyRound },
     ],
   },
 ];

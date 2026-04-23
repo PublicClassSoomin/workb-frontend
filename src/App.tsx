@@ -43,6 +43,7 @@ import DepartmentsSettingsPage from './pages/settings/DepartmentsSettingsPage'
 import VoiceSettingsPage from './pages/settings/VoiceSettingsPage'
 import IntegrationsSettingsPage from './pages/settings/IntegrationsSettingsPage'
 import DeviceSettingsPage from './pages/settings/DeviceSettingsPage'
+import PasswordSettingsPage from './pages/settings/PasswordSettingsPage'
 
 export default function App() {
   return (
@@ -116,6 +117,7 @@ export default function App() {
           </Route>
           <Route path="settings/voice" element={<VoiceSettingsPage />} />
           <Route path="settings/device" element={<DeviceSettingsPage />} />
+          <Route path="settings/password" element={<PasswordSettingsPage />} />
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />

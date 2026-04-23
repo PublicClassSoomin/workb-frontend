@@ -6,7 +6,7 @@ import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
 import type { Meeting } from '../../types/meeting'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
 import { fetchWorkspaceMeetingDetail } from '../../api/meetings'
-import { getApiV1BaseUrl } from '../../api/baseUrl'
+import { apiRequest } from '../../api/client'
 
 export default function UpcomingMeetingPage() {
   const { meetingId } = useParams()
@@ -231,25 +231,13 @@ export default function UpcomingMeetingPage() {
             const ok = window.confirm('회의를 삭제하시겠습니까?')
             if (!ok) return
 
-            const token =
-              localStorage.getItem('access_token') ||
-              localStorage.getItem('token') ||
-              localStorage.getItem('authToken')
-
-            const res = await fetch(
-              `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/${meetingId}`,
-              {
-                method: 'DELETE',
-                headers: {
-                  Accept: 'application/json',
-                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-              },
-            )
-
-            if (!res.ok) {
-              const text = await res.text().catch(() => '')
-              alert(`회의 삭제 실패 (${res.status})\n${text}`)
+            try {
+              await apiRequest<void>(
+                `/meetings/workspaces/${workspaceId}/${meetingId}`,
+                { method: 'DELETE' },
+              )
+            } catch (err) {
+              alert(`회의 삭제 실패\n${err instanceof Error ? err.message : String(err)}`)
               return
             }
 

@@ -1,5 +1,5 @@
 import type { Meeting, MeetingStatus, WeeklyStats, Participant } from '../types/meeting'
-import { getApiV1BaseUrl } from './baseUrl'
+import { apiRequest } from './client'
 
 type BackendMeetingStatus = 'scheduled' | 'in_progress' | 'done'
 
@@ -110,13 +110,7 @@ export function mapApiMeetingItemToMeeting(m: BackendMeetingItem): Meeting {
 }
 
 export async function fetchWorkspaceDashboard(workspaceId: number) {
-  const url = `${getApiV1BaseUrl()}/workspaces/${workspaceId}/dashboard`
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Dashboard API failed (${res.status}): ${text}`)
-  }
-  const data = (await res.json()) as BackendDashboardResponse
+  const data = await apiRequest<BackendDashboardResponse>(`/workspaces/${workspaceId}/dashboard`)
 
   const meetings: Meeting[] = [
     ...data.meetings.in_progress.map(mapApiMeetingItemToMeeting),
@@ -134,4 +128,3 @@ export async function fetchWorkspaceDashboard(workspaceId: number) {
 
   return { raw: data, meetings, weeklyStats }
 }
-

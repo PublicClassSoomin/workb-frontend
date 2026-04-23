@@ -47,6 +47,17 @@ export interface InviteCodeValidateResponse {
   workspace_name: string
 }
 
+export interface WorkspaceInviteEmailItem {
+  email: string
+  role: UserRole
+}
+
+export interface WorkspaceInviteEmailResponse {
+  sent_count: number
+  failed_count: number
+  message: string
+}
+
 export function getWorkspace(workspaceId: number): Promise<WorkspaceResponse> {
   return apiRequest<WorkspaceResponse>(`/workspaces/${workspaceId}`)
 }
@@ -71,6 +82,16 @@ export function validateInviteCode(inviteCode: string): Promise<InviteCodeValida
   return apiRequest<InviteCodeValidateResponse>('/workspaces/invite-codes/validate', {
     method: 'POST',
     body: JSON.stringify({ invite_code: inviteCode }),
+  })
+}
+
+export function sendWorkspaceInviteEmails(
+  workspaceId: number,
+  invites: WorkspaceInviteEmailItem[],
+): Promise<WorkspaceInviteEmailResponse> {
+  return apiRequest<WorkspaceInviteEmailResponse>(`/workspaces/${workspaceId}/invites/email`, {
+    method: 'POST',
+    body: JSON.stringify({ invites }),
   })
 }
 

@@ -9,7 +9,7 @@ import { formatDateFull, durationMinutes } from '../utils/format'
 import { persistMeetingSnapshot } from '../utils/meetingRoutes'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
 import type { Meeting } from '../types/meeting'
-import { getApiV1BaseUrl } from '../api/baseUrl'
+import { apiRequest } from '../api/client'
 
 type BackendStatus = 'scheduled' | 'in_progress' | 'done'
 type UiStatus = 'upcoming' | 'inprogress' | 'completed'
@@ -102,17 +102,10 @@ export default function HistoryPage() {
       setLoading(true)
       setError(null)
 
-      fetch(`${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/history?${qs.toString()}`, {
-        signal: controller.signal,
-        headers: { Accept: 'application/json' },
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '')
-            throw new Error(`History API failed (${res.status}): ${text}`)
-          }
-          return (await res.json()) as MeetingHistoryResponse
-        })
+      apiRequest<MeetingHistoryResponse>(
+        `/meetings/workspaces/${workspaceId}/history?${qs.toString()}`,
+        { signal: controller.signal },
+      )
         .then((data) => {
           setMeetingsHistory(data.meetings)
           setTotal(data.total)

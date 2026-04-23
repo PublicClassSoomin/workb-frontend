@@ -7,7 +7,7 @@ import { DEPARTMENTS } from '../../data/mockData'
 import DatePicker from '../../components/ui/DatePicker'
 import TimePicker from '../../components/ui/TimePicker'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
-import { getApiV1BaseUrl } from '../../api/baseUrl'
+import { apiRequest } from '../../api/client'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
@@ -216,11 +216,6 @@ export default function NewMeetingPage() {
       return
     }
 
-    const token =
-      localStorage.getItem('access_token') ||
-      localStorage.getItem('token') ||
-      localStorage.getItem('authToken')
-
     // 참석자 저장은 반드시 DB의 users.id (= userId)만 사용
     const participant_ids = selectedParticipants
       .map((p) => p.userId)
@@ -241,23 +236,19 @@ export default function NewMeetingPage() {
 
     const workspaceId = getCurrentWorkspaceId()
     const editId = editMeetingIdRef.current
-    const url = editId
-      ? `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/${editId}`
-      : `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}`
 
-    const res = await fetch(url, {
-      method: editId ? 'PATCH' : 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      alert(`${editId ? '회의 수정' : '회의 생성'} 실패 (${res.status})\n${text}`)
+    try {
+      await apiRequest(
+        editId
+          ? `/meetings/workspaces/${workspaceId}/${editId}`
+          : `/meetings/workspaces/${workspaceId}`,
+        {
+          method: editId ? 'PATCH' : 'POST',
+          body: JSON.stringify(body),
+        },
+      )
+    } catch (err) {
+      alert(`${editId ? '회의 수정' : '회의 생성'} 실패\n${err instanceof Error ? err.message : String(err)}`)
       return
     }
 
