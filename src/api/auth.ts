@@ -132,6 +132,12 @@ export async function updateMyProfile(payload: UserProfileUpdatePayload): Promis
   return response
 }
 
+export async function withdrawMyAccount(): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/me', {
+    method: 'DELETE',
+  })
+}
+
 export async function login(
   payload: LoginPayload,
   userFallback: Partial<StoredUser> = {},
