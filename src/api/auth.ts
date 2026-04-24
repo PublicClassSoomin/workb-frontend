@@ -47,6 +47,22 @@ export interface UserResponse {
   role: 'admin' | 'member' | 'viewer'
 }
 
+export interface UserProfileResponse extends UserResponse {
+  workspace_id: number | null
+}
+
+export interface UserProfileUpdatePayload {
+  name: string
+}
+
+interface UserProfileUpdateResponse {
+  user: UserProfileResponse
+  access_token: string
+  refresh_token: string
+  token_type: string
+  message: string
+}
+
 interface MessageResponse {
   message: string
 }
@@ -100,6 +116,20 @@ export function confirmPasswordReset(payload: ConfirmPasswordResetPayload): Prom
     skipAuthRefresh: true,
     body: JSON.stringify(payload),
   })
+}
+
+export function getMyProfile(): Promise<UserProfileResponse> {
+  return apiRequest<UserProfileResponse>('/users/me')
+}
+
+export async function updateMyProfile(payload: UserProfileUpdatePayload): Promise<UserProfileUpdateResponse> {
+  const response = await apiRequest<UserProfileUpdateResponse>('/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+  setAuthTokens(response.access_token, response.refresh_token)
+  syncStoredUserFromToken(response.user)
+  return response
 }
 
 export async function login(
