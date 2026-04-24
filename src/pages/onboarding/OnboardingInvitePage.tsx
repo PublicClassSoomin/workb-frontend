@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Copy, Check, UserPlus, Trash2 } from 'lucide-react'
 import { getCurrentWorkspaceId } from '../../api/client'
-import { getWorkspace } from '../../api/workspace'
+import { getWorkspace, sendWorkspaceInviteEmails, type UserRole } from '../../api/workspace'
 
 const ROLES = ['관리자', '멤버', '뷰어'] as const
 type Role = typeof ROLES[number]
+
+const ROLE_TO_BACKEND: Record<Role, UserRole> = {
+  관리자: 'admin',
+  멤버: 'member',
+  뷰어: 'viewer',
+}
 
 interface InviteRow {
   id: string
@@ -18,7 +24,9 @@ export default function OnboardingInvitePage() {
   const [copied, setCopied] = useState(false)
   const [rows, setRows] = useState<InviteRow[]>([{ id: '1', email: '', role: '멤버' }])
   const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const navigate = useNavigate()
   const workspaceId = getCurrentWorkspaceId()
 
@@ -64,7 +72,30 @@ export default function OnboardingInvitePage() {
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, [field]: value } : r))
   }
 
-  function handleFinish() {
+  async function handleFinish() {
+    setError('')
+    setMessage('')
+
+    const invites = rows
+      .map((row) => ({
+        email: row.email.trim(),
+        role: ROLE_TO_BACKEND[row.role],
+      }))
+      .filter((row) => row.email)
+
+    if (invites.length > 0) {
+      setSending(true)
+      try {
+        const result = await sendWorkspaceInviteEmails(workspaceId, invites)
+        setMessage(result.message)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '초대 메일 발송에 실패했습니다.')
+        setSending(false)
+        return
+      }
+      setSending(false)
+    }
+
     localStorage.setItem('workb-auth-mock', 'true')
     navigate('/')
   }
@@ -95,6 +126,7 @@ export default function OnboardingInvitePage() {
       <h1 className="text-2xl font-bold text-foreground mb-1">멤버 초대</h1>
       <p className="text-sm text-muted-foreground mb-6">초대코드를 공유하거나 이메일로 직접 초대하세요.</p>
       {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
+      {message && <p className="text-sm text-accent mb-3">{message}</p>}
 
       {/* Invite code */}
       <div className="p-3 rounded-lg border border-border bg-muted/30 mb-5">
@@ -141,10 +173,14 @@ export default function OnboardingInvitePage() {
         </button>
       </div>
 
-      <button onClick={handleFinish} className="w-full h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
-        초대 발송하고 시작하기
+      <button
+        onClick={handleFinish}
+        disabled={sending}
+        className="w-full h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {sending ? '초대 발송 중...' : '초대 발송하고 시작하기'}
       </button>
-      <button onClick={() => navigate('/')} className="w-full h-9 text-sm text-muted-foreground hover:text-foreground transition-colors mt-1">
+      <button onClick={() => navigate('/')} disabled={sending} className="w-full h-9 text-sm text-muted-foreground hover:text-foreground transition-colors mt-1 disabled:cursor-not-allowed disabled:opacity-60">
         건너뛰고 시작하기
       </button>
     </div>

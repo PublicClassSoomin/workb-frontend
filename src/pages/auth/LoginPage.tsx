@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { login } from '../../api/auth'
+import { useAuth } from '../../context/AuthContext'
 
 type Tab = 'admin' | 'member'
 
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
+  const { refreshSession, signOut } = useAuth()
   const returnTo = typeof location.state === 'object'
     && location.state
     && 'from' in location.state
@@ -32,6 +34,24 @@ export default function LoginPage() {
 
     try {
       await login({ email, password })
+      const sessionUser = await refreshSession()
+
+      if (tab === 'admin' && sessionUser?.role !== 'admin') {
+        await signOut()
+        setError('관리자 계정으로 로그인해주세요.')
+        return
+      }
+
+      if (tab === 'member') {
+        const invalidMemberSession = !sessionUser || sessionUser.role === 'admin'
+
+        if (invalidMemberSession) {
+          await signOut()
+          setError('멤버 계정으로 로그인해주세요.')
+          return
+        }
+      }
+
       navigate(returnTo, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.')
@@ -125,8 +145,11 @@ export default function LoginPage() {
         <Link to="/reset-password" className="hover:text-foreground transition-colors">비밀번호를 잊으셨나요?</Link>
         <span>
           계정이 없으신가요?{' '}
-          <Link to="/signup/admin" className="text-accent font-medium hover:underline">
-            {tab === 'admin' ? '관리자 회원가입' : '회원가입'}
+          <Link
+            to={tab === 'admin' ? '/signup/admin' : '/signup/member'}
+            className="text-accent font-medium hover:underline"
+          >
+            {tab === 'admin' ? '관리자 회원가입' : '멤버 회원가입'}
           </Link>
         </span>
       </div>
