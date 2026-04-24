@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import type { ThemePreference } from '../../hooks/useThemePreference'
 import NotificationsPanel from './NotificationsPanel'
 import Tooltip from '../ui/Tooltip'
+import { getCurrentWorkspaceRole, WORKSPACE_ROLE_CHANGED_EVENT } from '../../utils/workspace'
 
 interface TopBarProps {
   themePreference: ThemePreference
@@ -33,6 +34,7 @@ export default function TopBar({
   const [searchQuery, setSearchQuery] = useState('')
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
+  const [workspaceRole, setWorkspaceRole] = useState(() => getCurrentWorkspaceRole())
 
   useEffect(() => {
     if (!notifOpen) return
@@ -46,6 +48,15 @@ export default function TopBar({
     document.addEventListener('mousedown', handleDown)
     return () => document.removeEventListener('mousedown', handleDown)
   }, [notifOpen])
+
+  useEffect(() => {
+    function onRoleChanged(e: Event) {
+      const role = (e as CustomEvent<{ role: string }>).detail?.role
+      if (typeof role === 'string') setWorkspaceRole(role)
+    }
+    window.addEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
+    return () => window.removeEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
+  }, [])
 
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return
@@ -97,19 +108,21 @@ export default function TopBar({
       <div className="flex-1" />
 
       <div className="flex items-center gap-1">
-        <Tooltip label="새 회의 생성" placement="bottom">
-          <button
-            onClick={() => navigate('/meetings/new')}
-            className={clsx(
-              'flex items-center gap-1.5 h-7 px-3 rounded text-sm font-medium transition-colors',
-              'bg-accent text-accent-foreground hover:opacity-90',
-            )}
-            aria-label="새 회의 생성"
-          >
-            <Plus size={13} aria-hidden="true" />
-            <span className="hidden sm:inline">새 회의</span>
-          </button>
-        </Tooltip>
+        {workspaceRole === 'admin' && (
+          <Tooltip label="새 회의 생성" placement="bottom">
+            <button
+              onClick={() => navigate('/meetings/new')}
+              className={clsx(
+                'flex items-center gap-1.5 h-7 px-3 rounded text-sm font-medium transition-colors',
+                'bg-accent text-accent-foreground hover:opacity-90',
+              )}
+              aria-label="새 회의 생성"
+            >
+              <Plus size={13} aria-hidden="true" />
+              <span className="hidden sm:inline">새 회의</span>
+            </button>
+          </Tooltip>
+        )}
 
         <div ref={notifRef} className="relative">
           <Tooltip label="알림" placement="bottom">

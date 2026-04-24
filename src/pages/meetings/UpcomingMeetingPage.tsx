@@ -4,7 +4,12 @@ import { ArrowLeft, Clock, Users, Calendar, Video, Trash2, Edit2 } from 'lucide-
 import { formatTime } from '../../utils/format'
 import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
 import type { Meeting } from '../../types/meeting'
-import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
+import {
+  getCurrentWorkspaceId,
+  getCurrentWorkspaceRole,
+  WORKSPACE_CHANGED_EVENT,
+  WORKSPACE_ROLE_CHANGED_EVENT,
+} from '../../utils/workspace'
 import { fetchWorkspaceMeetingDetail } from '../../api/meetings'
 import { apiRequest } from '../../api/client'
 
@@ -15,6 +20,7 @@ export default function UpcomingMeetingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+  const [workspaceRole, setWorkspaceRole] = useState(() => getCurrentWorkspaceRole())
 
   useEffect(() => {
     function onWsChanged(e: Event) {
@@ -23,6 +29,15 @@ export default function UpcomingMeetingPage() {
     }
     window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
     return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
+  useEffect(() => {
+    function onRoleChanged(e: Event) {
+      const role = (e as CustomEvent<{ role: string }>).detail?.role
+      if (typeof role === 'string') setWorkspaceRole(role)
+    }
+    window.addEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
+    return () => window.removeEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
   }, [])
 
   useEffect(() => {
@@ -215,40 +230,42 @@ export default function UpcomingMeetingPage() {
         </button>
       </div>
 
-      <div className="mt-4 flex items-center justify-end gap-3">
-        <Link
-          to="/meetings/new"
-          state={{ draftMeeting: meeting }}
-          className="inline-flex items-center gap-1.5 text-mini text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Edit2 size={13} aria-hidden="true" />
-          수정
-        </Link>
-        <button
-          type="button"
-          onClick={async () => {
-            if (!meetingId) return
-            const ok = window.confirm('회의를 삭제하시겠습니까?')
-            if (!ok) return
+      {workspaceRole === 'admin' && (
+        <div className="mt-4 flex items-center justify-end gap-3">
+          <Link
+            to="/meetings/new"
+            state={{ draftMeeting: meeting }}
+            className="inline-flex items-center gap-1.5 text-mini text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Edit2 size={13} aria-hidden="true" />
+            수정
+          </Link>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!meetingId) return
+              const ok = window.confirm('회의를 삭제하시겠습니까?')
+              if (!ok) return
 
-            try {
-              await apiRequest<void>(
-                `/meetings/workspaces/${workspaceId}/${meetingId}`,
-                { method: 'DELETE' },
-              )
-            } catch (err) {
-              alert(`회의 삭제 실패\n${err instanceof Error ? err.message : String(err)}`)
-              return
-            }
+              try {
+                await apiRequest<void>(
+                  `/meetings/workspaces/${workspaceId}/${meetingId}`,
+                  { method: 'DELETE' },
+                )
+              } catch (err) {
+                alert(`회의 삭제 실패\n${err instanceof Error ? err.message : String(err)}`)
+                return
+              }
 
-            navigate('/')
-          }}
-          className="inline-flex items-center gap-1.5 text-mini text-red-600 hover:text-red-700 transition-colors"
-        >
-          <Trash2 size={13} aria-hidden="true" />
-          삭제
-        </button>
-      </div>
+              navigate('/')
+            }}
+            className="inline-flex items-center gap-1.5 text-mini text-red-600 hover:text-red-700 transition-colors"
+          >
+            <Trash2 size={13} aria-hidden="true" />
+            삭제
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Users, Tag, Search, X, UsersRound } from 'lucide-react'
-import { fetchWorkspaceMembers } from '../../api/workspaceMembers'
 import type { Meeting, Participant } from '../../types/meeting'
-import { DEPARTMENTS } from '../../data/mockData'
 import DatePicker from '../../components/ui/DatePicker'
 import TimePicker from '../../components/ui/TimePicker'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
 import { apiRequest } from '../../api/client'
+import { getDepartments, getWorkspaceMembers, type Department as WorkspaceDepartment } from '../../api/workspace'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
@@ -29,6 +28,7 @@ export default function NewMeetingPage() {
   const [meetingType, setMeetingType] = useState('')
   const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([])
   const [allParticipants, setAllParticipants] = useState<Participant[]>([])
+  const [departments, setDepartments] = useState<WorkspaceDepartment[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -58,11 +58,13 @@ export default function NewMeetingPage() {
 
   useEffect(() => {
     let mounted = true
-    fetchWorkspaceMembers(workspaceId)
-      .then((rows) => {
+    Promise.all([getWorkspaceMembers(workspaceId), getDepartments(workspaceId)])
+      .then(([memberRows, departmentRows]) => {
         if (!mounted) return
+        setDepartments(Array.isArray(departmentRows) ? departmentRows : [])
+
         const palette = ['#6b78f6', '#22c55e', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#8b5cf6', '#64748b']
-        const ui: Participant[] = rows.map((r) => {
+        const ui: Participant[] = (Array.isArray(memberRows) ? memberRows : []).map((r) => {
           const initials = r.name.length >= 2 ? r.name.slice(0, 2) : r.name.length === 1 ? r.name : '?'
           return {
             id: `u${r.user_id}`,
@@ -70,6 +72,7 @@ export default function NewMeetingPage() {
             name: r.name,
             avatarInitials: initials,
             color: palette[Math.abs(r.user_id) % palette.length],
+            // 부서는 "멤버·권한 관리"에서 지정된 department만 내려옴 (없으면 null)
             department: r.department ?? undefined,
           }
         })
@@ -77,6 +80,7 @@ export default function NewMeetingPage() {
       })
       .catch(() => {
         if (!mounted) return
+        setDepartments([])
         setAllParticipants([])
       })
     return () => {
@@ -105,8 +109,8 @@ export default function NewMeetingPage() {
         (p.department?.toLowerCase().includes(trimmed) ?? false))
   )
 
-  // 부서 선택 UX는 고정 목록(목업) 유지: 데이터만 DB 연결
-  const matchedDepartments = DEPARTMENTS.filter(
+  // 부서 선택 UX: "부서 관리"에서 생성된 부서만 노출
+  const matchedDepartments = departments.filter(
     (d) => trimmed === '' || d.name.toLowerCase().includes(trimmed),
   )
 
@@ -437,7 +441,7 @@ export default function NewMeetingPage() {
                       const isHighlighted = idx === highlightedIndex
                       return (
                         <button
-                          key={dept.id}
+                          key={dept.department_id}
                           type="button"
                           role="option"
                           aria-selected={isHighlighted}
