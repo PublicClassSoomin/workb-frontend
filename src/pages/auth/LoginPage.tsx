@@ -28,6 +28,14 @@ export default function LoginPage() {
       setError('이메일과 비밀번호를 입력해주세요.')
       return
     }
+    if (password.length < 8) {
+      setError('비밀번호는 8자 이상 입력해주세요.')
+      return
+    }
+    if (password.length > 64) {
+      setError('비밀번호는 64자 이하로 입력해주세요.')
+      return
+    }
 
     setLoading(true)
     setError('')

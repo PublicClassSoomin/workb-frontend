@@ -1,4 +1,4 @@
-import { apiRequest } from './client'
+import { apiRequest, getAccessToken, getRefreshToken } from './client'
 
 export type WorkspaceRole = 'admin' | 'member' | 'viewer' | string
 
@@ -15,6 +15,8 @@ interface WorkspaceListResponse {
 }
 
 export async function fetchMyWorkspaces(): Promise<WorkspaceListItem[]> {
+  if (!getAccessToken() && !getRefreshToken()) return []
+
   const data = await apiRequest<WorkspaceListResponse>('/workspaces')
   return Array.isArray(data.workspaces) ? data.workspaces : []
 }

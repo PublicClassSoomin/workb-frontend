@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Save, Upload, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Image as ImageIcon, Save, Trash2, Upload, X } from "lucide-react";
 import { getCurrentWorkspaceId } from "../../api/client";
-import { getWorkspace, updateWorkspace } from "../../api/workspace";
+import { deleteWorkspace, getWorkspace, updateWorkspace } from "../../api/workspace";
+import { useAuth } from "../../context/AuthContext";
 
 const SUMMARY_STYLES = [
   "간결형 (결정사항·액션아이템 중심)",
@@ -27,6 +29,8 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export default function WorkspaceSettingsPage() {
+  const navigate = useNavigate();
+  const { isAdmin, signOut } = useAuth();
   const [teamName, setTeamName] = useState("Workb 팀");
   const [industry, setIndustry] = useState("");
   const [language, setLanguage] = useState("한국어");
@@ -36,6 +40,7 @@ export default function WorkspaceSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const workspaceId = getCurrentWorkspaceId();
 
@@ -150,6 +155,35 @@ export default function WorkspaceSettingsPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteWorkspace() {
+    const typedName = window.prompt(
+      `워크스페이스를 삭제하려면 "${teamName}"을 정확히 입력하세요.`
+    );
+    if (typedName === null) return;
+    if (typedName !== teamName) {
+      setError("워크스페이스 이름이 일치하지 않습니다.");
+      return;
+    }
+
+    setDeleting(true);
+    setError("");
+
+    try {
+      await deleteWorkspace(workspaceId);
+      localStorage.removeItem(getLocalLogoKey(workspaceId));
+      await signOut();
+      navigate("/login", { replace: true });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "워크스페이스 삭제에 실패했습니다."
+      );
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -308,6 +342,31 @@ export default function WorkspaceSettingsPage() {
           {saving ? "저장 중..." : saved ? "저장됨 ✓" : "변경사항 저장"}
         </button>
       </form>
+
+      {isAdmin && (
+        <div className="mt-6 rounded-xl border border-red-200/80 bg-red-50/70 p-4 dark:border-red-900/45 dark:bg-red-950/10">
+          <div className="mb-3 flex items-start gap-3">
+            <Trash2 size={20} className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" />
+            <div>
+              <h2 className="text-sm font-semibold text-red-700 dark:text-red-300">
+                워크스페이스 삭제
+              </h2>
+              <p className="text-mini text-red-600/90 dark:text-red-300/75">
+                워크스페이스, 회의, 멤버십, 연동 설정이 삭제되고 소속 계정은 비활성화됩니다.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDeleteWorkspace}
+            disabled={deleting || saving}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-300 bg-card px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:border-red-900/60 dark:bg-background dark:text-red-300 dark:hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Trash2 size={14} />
+            {deleting ? "삭제 중..." : "워크스페이스 삭제"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
