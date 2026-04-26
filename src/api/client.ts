@@ -52,7 +52,7 @@ function formatErrorMessage(detail: unknown): string {
       const parts = nested
         .map((item) => {
           if (item && typeof item === "object" && "msg" in item) {
-            return String((item as { msg: unknown }).msg);
+            return formatValidationError(item as Record<string, unknown>);
           }
           return null;
         })
@@ -66,6 +66,60 @@ function formatErrorMessage(detail: unknown): string {
   }
 
   return "API 요청에 실패했습니다.";
+}
+
+function getFieldLabel(loc: unknown): string {
+  if (!Array.isArray(loc)) return "입력값";
+
+  const field = loc[loc.length - 1];
+  const labels: Record<string, string> = {
+    email: "이메일",
+    password: "비밀번호",
+    current_password: "현재 비밀번호",
+    new_password: "새 비밀번호",
+    confirm_password: "비밀번호 확인",
+    name: "이름",
+    invite_code: "초대코드",
+    token: "인증 토큰",
+  };
+
+  return typeof field === "string" ? labels[field] ?? "입력값" : "입력값";
+}
+
+function readNumberContext(ctx: unknown, key: string): number | null {
+  if (!ctx || typeof ctx !== "object" || !(key in ctx)) return null;
+  const value = Number((ctx as Record<string, unknown>)[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatValidationError(item: Record<string, unknown>): string {
+  const type = typeof item.type === "string" ? item.type : "";
+  const msg = typeof item.msg === "string" ? item.msg : "";
+  const fieldLabel = getFieldLabel(item.loc);
+  const minLength = readNumberContext(item.ctx, "min_length");
+  const maxLength = readNumberContext(item.ctx, "max_length");
+
+  if (type === "string_too_short") {
+    return minLength
+      ? `${fieldLabel}는 ${minLength}자 이상 입력해주세요.`
+      : `${fieldLabel}가 너무 짧습니다.`;
+  }
+
+  if (type === "string_too_long") {
+    return maxLength
+      ? `${fieldLabel}는 ${maxLength}자 이하로 입력해주세요.`
+      : `${fieldLabel}가 너무 깁니다.`;
+  }
+
+  if (type === "missing") return `${fieldLabel}을(를) 입력해주세요.`;
+  if (type === "value_error") return msg.replace(/^Value error,\s*/, "");
+  if (type.includes("email")) return "올바른 이메일 형식으로 입력해주세요.";
+
+  if (msg === "String should have at least 8 characters") {
+    return `${fieldLabel}는 8자 이상 입력해주세요.`;
+  }
+
+  return msg || "입력값을 확인해주세요.";
 }
 
 export function getAccessToken(): string | null {

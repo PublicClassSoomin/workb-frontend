@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { Check, Image as ImageIcon, KeyRound, Save, Upload, UserRound, X } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Check, Image as ImageIcon, KeyRound, Save, Trash2, Upload, UserRound, X } from 'lucide-react'
 import clsx from 'clsx'
 import { ApiError } from '../../api/client'
-import { updateMyProfile } from '../../api/auth'
+import { updateMyProfile, withdrawMyAccount } from '../../api/auth'
 import { useAuth } from '../../context/AuthContext'
 import { useAccentColor, type AccentPreset } from '../../hooks/useAccentColor'
 import { useFontScale, type FontScale } from '../../context/FontScaleContext'
@@ -34,7 +34,8 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export default function MyPage() {
-  const { user, saveUser } = useAuth()
+  const navigate = useNavigate()
+  const { user, saveUser, signOut } = useAuth()
   const { fontScale, setFontScale, previewFontScale } = useFontScale()
   const {
     accentPreset,
@@ -52,6 +53,7 @@ export default function MyPage() {
   const [draftAccentPreset, setDraftAccentPreset] = useState<AccentPreset>(accentPreset)
   const [draftAccentAsMain, setDraftAccentAsMain] = useState(accentAsMain)
   const [saving, setSaving] = useState(false)
+  const [withdrawing, setWithdrawing] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const profileImageKey = useMemo(() => getProfileImageKey(user?.id), [user?.id])
@@ -168,6 +170,33 @@ export default function MyPage() {
       )
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleWithdraw() {
+    const ok = window.confirm(
+      '회원 탈퇴를 진행하시겠습니까? 탈퇴 후 현재 계정으로 다시 로그인할 수 없습니다.',
+    )
+    if (!ok) return
+
+    setWithdrawing(true)
+    setError('')
+    setMessage('')
+
+    try {
+      await withdrawMyAccount()
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : '회원 탈퇴에 실패했습니다.',
+      )
+    } finally {
+      setWithdrawing(false)
     }
   }
 
@@ -382,6 +411,27 @@ export default function MyPage() {
           </button>
         </div>
       </form>
+
+      <div className="mt-6 rounded-xl border border-red-200/80 bg-red-50/70 p-4 dark:border-red-900/45 dark:bg-red-950/10">
+        <div className="mb-3 flex items-start gap-3">
+          <Trash2 size={20} className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" />
+          <div>
+            <h2 className="text-sm font-semibold text-red-700 dark:text-red-300">회원 탈퇴</h2>
+            <p className="text-mini text-red-600/90 dark:text-red-300/75">
+              계정이 비활성화되고 현재 워크스페이스 멤버 목록에서 제거됩니다.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleWithdraw}
+          disabled={withdrawing || saving}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-300 bg-card px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:border-red-900/60 dark:bg-background dark:text-red-300 dark:hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Trash2 size={14} />
+          {withdrawing ? '탈퇴 처리 중...' : '회원 탈퇴'}
+        </button>
+      </div>
     </div>
   )
 }
