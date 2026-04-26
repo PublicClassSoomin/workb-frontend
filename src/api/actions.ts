@@ -3,6 +3,7 @@ import { apiFetch } from './client'
 export interface SlackExportRequest {
   channel_id?: string
   include_action_items?: boolean
+  include_reports?: boolean
 }
 
 export interface TimeSlot {
@@ -10,9 +11,9 @@ export interface TimeSlot {
   end: string
 }
 
-export function exportSlack(meetingId: string | number, body: SlackExportRequest = {}) {
+export function exportSlack(meetingId: string | number, workspaceId: number, body: SlackExportRequest = {}) {
   return apiFetch<{ status: string }>(
-    `/actions/meetings/${meetingId}/export/slack`,
+    `/actions/meetings/${meetingId}/export/slack?workspace_id=${workspaceId}`,
     { method: 'POST', body: JSON.stringify(body) }
   )
 }

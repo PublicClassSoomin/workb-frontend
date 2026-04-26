@@ -59,7 +59,9 @@ export default function ExportPage() {
     setExporting((prev) => ({ ...prev, [targetId]: true }))
     try {
       if (targetId === 'slack') {
-        await exportSlack(meetingId, { include_action_items: true })
+        await exportSlack(meetingId, workspaceId, { include_action_items: true,
+          include_reports: true,
+         })
       } else if (targetId === 'google-calendar') {
         await exportGoogleCalendar(meetingId, workspaceId)
       }
