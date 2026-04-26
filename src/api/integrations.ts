@@ -91,3 +91,25 @@ export function saveSlackChannel(workspaceId: number, channelId: string) {
     { method: 'PATCH', body: JSON.stringify({ channel_id: channelId }) }
   )
 }
+
+// --- Google Calendar events ---
+export interface GoogleCalendarEvent {
+  id: string
+  title: string
+  start: string
+  end: string
+  description?: string | null
+  html_link?: string | null
+}
+
+export function getGoogleCalendarEvents(
+  workspaceId: number,
+  params: { time_min?: string; max_results?: number } = {},
+) {
+  const qs = new URLSearchParams()
+  qs.set('workspace_id', String(workspaceId))
+  if (params.time_min) qs.set('time_min', params.time_min)
+  if (typeof params.max_results === 'number') qs.set('max_results', String(params.max_results))
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return apiFetch<{ events: GoogleCalendarEvent[] }>(`/integrations/google/events${suffix}`)
+}

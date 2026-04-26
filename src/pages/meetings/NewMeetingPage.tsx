@@ -7,6 +7,7 @@ import TimePicker from '../../components/ui/TimePicker'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
 import { apiRequest } from '../../api/client'
 import { getDepartments, getWorkspaceMembers, type Department as WorkspaceDepartment } from '../../api/workspace'
+import { getIntegrations, type IntegrationItem } from '../../api/integrations'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
@@ -39,6 +40,8 @@ export default function NewMeetingPage() {
   const processedDraftKeyRef = useRef<string | null>(null)
   const editMeetingIdRef = useRef<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false)
 
   function todayYmd() {
     const d = new Date()
@@ -82,6 +85,29 @@ export default function NewMeetingPage() {
         if (!mounted) return
         setDepartments([])
         setAllParticipants([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    let mounted = true
+    getIntegrations(workspaceId)
+      .then((res) => {
+        if (!mounted) return
+        const items: IntegrationItem[] = Array.isArray(res.integrations) ? res.integrations : []
+        const google = items.find((x) => x.service === 'google_calendar')
+        const connected = Boolean(google?.is_connected)
+        setGoogleConnected(connected)
+        // 기본값: 연동돼 있으면 자동 등록 ON
+        if (!connected) setSyncGoogleCalendar(false)
+        else if (!editMeetingIdRef.current) setSyncGoogleCalendar(true)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setGoogleConnected(false)
+        setSyncGoogleCalendar(false)
       })
     return () => {
       mounted = false
@@ -142,6 +168,8 @@ export default function NewMeetingPage() {
     setSelectedParticipants(
       draft.participants?.length ? draft.participants.map((p) => ({ ...p })) : [],
     )
+    // 수정 화면에서는 "이미 구글 이벤트가 연결된 회의"라면 기본 체크
+    setSyncGoogleCalendar(Boolean(draft.googleCalendarEventId) || googleConnected)
   }, [location.key, location.state])
 
   useEffect(() => {
@@ -235,7 +263,8 @@ export default function NewMeetingPage() {
       meeting_type: meetingType || '일반 회의',
       scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
       participant_ids,
-      sync_google_calendar: false,
+      sync_google_calendar: syncGoogleCalendar,
+      duration_minutes: Number(duration) || 60,
     }
 
     const workspaceId = getCurrentWorkspaceId()
@@ -530,20 +559,39 @@ export default function NewMeetingPage() {
         </div>
 
         {/* Google Calendar 연동 */}
-        <div className="p-3 rounded-lg border border-border bg-muted/20">
+        <div className="p-3 rounded-lg border border-border bg-muted/20 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-foreground">📅 Google Calendar 연동</p>
               <p className="text-mini text-muted-foreground mt-0.5">회의 일정을 캘린더에 자동 등록합니다.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => console.log('TODO: Google Calendar sync')}
-              className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
+            <span
+              className={`px-2 py-0.5 rounded-full text-micro font-medium ${
+                googleConnected
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-muted text-muted-foreground'
+              }`}
             >
-              캘린더 연동
-            </button>
+              {googleConnected ? '연동됨' : '연동 안됨'}
+            </span>
           </div>
+
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground">이 회의를 Google Calendar에 등록</span>
+            <input
+              type="checkbox"
+              checked={syncGoogleCalendar}
+              onChange={(e) => setSyncGoogleCalendar(e.target.checked)}
+              disabled={!googleConnected}
+              aria-label="Google Calendar 자동 등록"
+            />
+          </label>
+
+          {!googleConnected && (
+            <p className="text-mini text-muted-foreground">
+              먼저 <span className="font-medium">설정 → 연동 관리</span>에서 Google Calendar를 연결해 주세요.
+            </p>
+          )}
         </div>
 
         <div className="flex gap-3 pt-2">

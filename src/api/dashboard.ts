@@ -17,6 +17,7 @@ export interface BackendMeetingItem {
   started_at?: string | null
   ended_at?: string | null
   meeting_type?: string | null
+  google_calendar_event_id?: string | null
   participants?: BackendDashboardParticipant[]
 }
 
@@ -100,6 +101,7 @@ export function mapApiMeetingItemToMeeting(m: BackendMeetingItem): Meeting {
     status: mapApiMeetingStatus(String(m.status)),
     startAt: pickStartAt(m),
     endAt: m.ended_at ?? undefined,
+    googleCalendarEventId: m.google_calendar_event_id ?? undefined,
     participants: apiParticipants.map(participantFromDashboard),
     agenda: [],
     summary: undefined,

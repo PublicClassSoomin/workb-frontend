@@ -1,17 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import clsx from 'clsx'
-import { MEETINGS } from '../data/mockData'
 import type { Meeting } from '../types/meeting'
+import { fetchWorkspaceMeetingsByDateRange } from '../api/meetings'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
+import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/integrations'
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
 
-function getMeetingsByDate(): Map<string, Meeting[]> {
+function getMeetingsByDate(meetings: Meeting[]): Map<string, Meeting[]> {
   const map = new Map<string, Meeting[]>()
-  MEETINGS.forEach((m) => {
+  meetings.forEach((m) => {
     const key = new Date(m.startAt).toDateString()
     const list = map.get(key) ?? []
     list.push(m)
+    map.set(key, list)
+  })
+  return map
+}
+
+function getEventsByDate(events: GoogleCalendarEvent[]): Map<string, GoogleCalendarEvent[]> {
+  const map = new Map<string, GoogleCalendarEvent[]>()
+  events.forEach((e) => {
+    const start = e.start ? new Date(e.start) : null
+    const key = (start ?? new Date()).toDateString()
+    const list = map.get(key) ?? []
+    list.push(e)
     map.set(key, list)
   })
   return map
@@ -28,8 +42,63 @@ export default function CalendarPage() {
   const [viewYear, setViewYear] = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth())
   const [selected, setSelected] = useState<Date | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([])
+  const [error, setError] = useState<string | null>(null)
 
-  const meetingsByDate = getMeetingsByDate()
+  useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) setWorkspaceId(id)
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const from = new Date(viewYear, viewMonth, 1)
+    const to = new Date(viewYear, viewMonth + 1, 0)
+    const timeMinIso = new Date(viewYear, viewMonth, 1).toISOString()
+
+    Promise.all([
+      fetchWorkspaceMeetingsByDateRange(workspaceId, from, to),
+      getGoogleCalendarEvents(workspaceId, { time_min: timeMinIso, max_results: 250 }),
+    ])
+      .then(([rows, google]) => {
+        if (cancelled) return
+        const mapped: Meeting[] = rows.map((r) => {
+          const startAt = r.scheduled_at ?? new Date(viewYear, viewMonth, 1).toISOString()
+          return {
+            id: String(r.meeting_id),
+            title: r.title,
+            status: 'upcoming',
+            startAt,
+            participants: [],
+            actionItemCount: 0,
+            decisionCount: 0,
+            tags: [],
+          }
+        })
+        setMeetings(mapped)
+        setGoogleEvents(Array.isArray(google.events) ? google.events : [])
+        setError(null)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setMeetings([])
+        setGoogleEvents([])
+        setError(e instanceof Error ? e.message : String(e))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, viewYear, viewMonth])
+
+  const meetingsByDate = useMemo(() => getMeetingsByDate(meetings), [meetings])
+  const eventsByDate = useMemo(() => getEventsByDate(googleEvents), [googleEvents])
   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString('ko-KR', {
@@ -51,6 +120,7 @@ export default function CalendarPage() {
   }
 
   const selectedMeetings = selected ? (meetingsByDate.get(selected.toDateString()) ?? []) : []
+  const selectedEvents = selected ? (eventsByDate.get(selected.toDateString()) ?? []) : []
 
   return (
     <div className="flex flex-col h-full">
@@ -60,6 +130,11 @@ export default function CalendarPage() {
           <Calendar size={18} className="text-accent" />
           <h1 className="text-lg font-semibold text-foreground">{monthLabel}</h1>
         </div>
+        {error && (
+          <span className="text-xs text-red-600 truncate max-w-[40%]" title={error}>
+            {error}
+          </span>
+        )}
         <div className="flex items-center gap-1">
           <button
             onClick={prevMonth}
@@ -128,6 +203,7 @@ export default function CalendarPage() {
                 viewMonth === selected.getMonth() &&
                 viewYear === selected.getFullYear()
               const meetings = meetingsByDate.get(date.toDateString()) ?? []
+              const events = eventsByDate.get(date.toDateString()) ?? []
               const dow = date.getDay()
 
               return (
@@ -139,7 +215,9 @@ export default function CalendarPage() {
                     'last:border-r-0 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
                     isSelected ? 'bg-accent-subtle' : 'hover:bg-muted/40',
                   )}
-                  aria-label={`${viewYear}년 ${viewMonth + 1}월 ${day}일${meetings.length > 0 ? ` (회의 ${meetings.length}건)` : ''}`}
+                  aria-label={`${viewYear}년 ${viewMonth + 1}월 ${day}일${
+                    meetings.length + events.length > 0 ? ` (일정 ${meetings.length + events.length}건)` : ''
+                  }`}
                   aria-pressed={isSelected}
                 >
                   <span
@@ -156,7 +234,7 @@ export default function CalendarPage() {
                     {day}
                   </span>
 
-                  {/* 회의 칩 (최대 2개) */}
+                  {/* 일정 칩 (최대 2개: WorkB 우선, 그 다음 Google) */}
                   {meetings.slice(0, 2).map((m) => (
                     <span
                       key={m.id}
@@ -165,9 +243,20 @@ export default function CalendarPage() {
                       {m.title}
                     </span>
                   ))}
-                  {meetings.length > 2 && (
+                  {meetings.length < 2 &&
+                    events.slice(0, 2 - meetings.length).map((ev) => (
+                      <span
+                        key={ev.id}
+                        className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-green-500/15 text-green-700 dark:text-green-400 font-medium leading-tight"
+                        title="Google Calendar"
+                      >
+                        {ev.title}
+                      </span>
+                    ))}
+
+                  {meetings.length + events.length > 2 && (
                     <span className="text-[10px] text-muted-foreground px-1">
-                      +{meetings.length - 2}개 더
+                      +{meetings.length + events.length - 2}개 더
                     </span>
                   )}
                 </button>
@@ -193,13 +282,13 @@ export default function CalendarPage() {
                 })}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {selectedMeetings.length > 0
-                  ? `회의 ${selectedMeetings.length}건`
-                  : '예정된 회의 없음'}
+                {selectedMeetings.length + selectedEvents.length > 0
+                  ? `일정 ${selectedMeetings.length + selectedEvents.length}건`
+                  : '예정된 일정 없음'}
               </p>
             </div>
 
-            {selectedMeetings.length > 0 ? (
+            {selectedMeetings.length + selectedEvents.length > 0 ? (
               <ul className="flex-1 overflow-y-auto divide-y divide-border">
                 {selectedMeetings.map((m) => (
                   <li key={m.id} className="px-4 py-3">
@@ -230,11 +319,27 @@ export default function CalendarPage() {
                     </span>
                   </li>
                 ))}
+                {selectedEvents.map((ev) => (
+                  <li key={ev.id} className="px-4 py-3">
+                    <p className="text-sm font-medium text-foreground truncate">{ev.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {ev.start
+                        ? new Date(ev.start).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                      {ev.end
+                        ? ` — ${new Date(ev.end).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
+                        : ''}
+                    </p>
+                    <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/15 text-green-700 dark:text-green-400">
+                      Google Calendar
+                    </span>
+                  </li>
+                ))}
               </ul>
             ) : (
               <div className="flex-1 flex items-center justify-center px-4">
                 <p className="text-sm text-muted-foreground text-center">
-                  이 날에 예정된 회의가 없습니다.
+                  이 날에 예정된 일정이 없습니다.
                 </p>
               </div>
             )}
