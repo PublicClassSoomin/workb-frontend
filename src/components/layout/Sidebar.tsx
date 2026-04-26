@@ -303,10 +303,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "회의 후",
     items: [
-      { to: "/meetings/3/notes", label: "회의록", icon: FileText },
+      { to: "/meetings/post", label: "회의록 · 보고서", icon: FileText },
       { to: "/meetings/3/wbs", label: "WBS · 태스크", icon: ListTodo },
-      { to: "/meetings/3/reports", label: "보고서 생성", icon: FileBarChart },
-      { to: "/meetings/3/export", label: "내보내기 · 공유", icon: Share2 },
     ],
   },
   {

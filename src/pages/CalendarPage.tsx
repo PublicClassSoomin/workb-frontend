@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import clsx from 'clsx'
 import type { Meeting } from '../types/meeting'
@@ -7,34 +7,20 @@ import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspa
 import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/integrations'
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
-
-function getMeetingsByDate(meetings: Meeting[]): Map<string, Meeting[]> {
-  const map = new Map<string, Meeting[]>()
-  meetings.forEach((m) => {
-    const key = new Date(m.startAt).toDateString()
-    const list = map.get(key) ?? []
-    list.push(m)
-    map.set(key, list)
-  })
-  return map
-}
-
-function getEventsByDate(events: GoogleCalendarEvent[]): Map<string, GoogleCalendarEvent[]> {
-  const map = new Map<string, GoogleCalendarEvent[]>()
-  events.forEach((e) => {
-    const start = e.start ? new Date(e.start) : null
-    const key = (start ?? new Date()).toDateString()
-    const list = map.get(key) ?? []
-    list.push(e)
-    map.set(key, list)
-  })
-  return map
-}
-
 const STATUS_LABEL: Record<Meeting['status'], string> = {
   inprogress: '진행 중',
   upcoming: '예정',
   completed: '완료',
+}
+
+interface CalendarItem {
+  id: string
+  title: string
+  startAt: string
+  endAt?: string
+  source: 'workb' | 'google'
+  status?: Meeting['status']
+  htmlLink?: string
 }
 
 export default function CalendarPage() {
@@ -42,11 +28,13 @@ export default function CalendarPage() {
   const [viewYear, setViewYear] = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth())
   const [selected, setSelected] = useState<Date | null>(null)
-  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
-  const [meetings, setMeetings] = useState<Meeting[]>([])
-  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([])
+  const [items, setItems] = useState<CalendarItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [googleConnected, setGoogleConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
 
+  // Listen to workspace changes event
   useEffect(() => {
     function onWsChanged(e: Event) {
       const id = (e as CustomEvent<{ id: number }>).detail?.id
@@ -56,49 +44,78 @@ export default function CalendarPage() {
     return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
   }, [])
 
+  // Load workb meetings for given workspace and month
   useEffect(() => {
     let cancelled = false
-    const from = new Date(viewYear, viewMonth, 1)
-    const to = new Date(viewYear, viewMonth + 1, 0)
-    const timeMinIso = new Date(viewYear, viewMonth, 1).toISOString()
-
-    Promise.all([
-      fetchWorkspaceMeetingsByDateRange(workspaceId, from, to),
-      getGoogleCalendarEvents(workspaceId, { time_min: timeMinIso, max_results: 250 }),
-    ])
-      .then(([rows, google]) => {
-        if (cancelled) return
-        const mapped: Meeting[] = rows.map((r) => {
-          const startAt = r.scheduled_at ?? new Date(viewYear, viewMonth, 1).toISOString()
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        // fetch workb meetings
+        const from = new Date(viewYear, viewMonth, 1)
+        const to = new Date(viewYear, viewMonth + 1, 0)
+        const [rows] = await Promise.all([
+          fetchWorkspaceMeetingsByDateRange(workspaceId, from, to),
+        ])
+        const workbItems: CalendarItem[] = (rows ?? []).map((r) => {
+          const startAt = r.scheduled_at ?? from.toISOString()
           return {
             id: String(r.meeting_id),
             title: r.title,
             status: 'upcoming',
             startAt,
-            participants: [],
-            actionItemCount: 0,
-            decisionCount: 0,
-            tags: [],
+            source: 'workb',
           }
         })
-        setMeetings(mapped)
-        setGoogleEvents(Array.isArray(google.events) ? google.events : [])
-        setError(null)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setMeetings([])
-        setGoogleEvents([])
-        setError(e instanceof Error ? e.message : String(e))
-      })
-
+        if (!cancelled) {
+          setItems(workbItems)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setItems([])
+          setError(e instanceof Error ? e.message : String(e))
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
   }, [workspaceId, viewYear, viewMonth])
 
-  const meetingsByDate = useMemo(() => getMeetingsByDate(meetings), [meetings])
-  const eventsByDate = useMemo(() => getEventsByDate(googleEvents), [googleEvents])
+  // Load Google Calendar events for given workspace and month
+  useEffect(() => {
+    let cancelled = false
+    async function loadGoogle() {
+      const timeMin = new Date(viewYear, viewMonth, 1).toISOString()
+      try {
+        const res = await getGoogleCalendarEvents(workspaceId, timeMin, 250)
+        if (!cancelled) {
+          setGoogleConnected(true)
+          setItems((prev) => {
+            const withoutGoogle = prev.filter((i) => i.source !== 'google')
+            const googleItems: CalendarItem[] = (Array.isArray(res.events) ? res.events : []).map((e: GoogleCalendarEvent) => ({
+              id: `gcal-${e.id}`,
+              title: e.title,
+              startAt: e.start,
+              endAt: e.end,
+              source: 'google',
+              htmlLink: e.html_link ?? undefined,
+            }))
+            return [...withoutGoogle, ...googleItems]
+          })
+        }
+      } catch {
+        if (!cancelled) setGoogleConnected(false)
+      }
+    }
+    loadGoogle()
+    return () => {
+      cancelled = true
+    }
+  }, [viewYear, viewMonth, workspaceId])
   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString('ko-KR', {
@@ -106,9 +123,13 @@ export default function CalendarPage() {
     month: 'long',
   })
 
-  // 마지막 행을 채우기 위한 trailing cell 수
   const totalCells = firstDay + daysInMonth
   const trailingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7)
+
+  function getItemsByDate(date: Date): CalendarItem[] {
+    const key = date.toDateString()
+    return items.filter((item) => new Date(item.startAt).toDateString() === key)
+  }
 
   function prevMonth() {
     if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1) }
@@ -119,8 +140,9 @@ export default function CalendarPage() {
     else setViewMonth((m) => m + 1)
   }
 
-  const selectedMeetings = selected ? (meetingsByDate.get(selected.toDateString()) ?? []) : []
-  const selectedEvents = selected ? (eventsByDate.get(selected.toDateString()) ?? []) : []
+  const selectedItems = selected ? getItemsByDate(selected) : []
+  const selectedWorkbItems = selectedItems.filter((i) => i.source === 'workb') as (CalendarItem & { status: Meeting['status'] })[]
+  const selectedGoogleItems = selectedItems.filter((i) => i.source === 'google')
 
   return (
     <div className="flex flex-col h-full">
@@ -129,6 +151,12 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-accent" />
           <h1 className="text-lg font-semibold text-foreground">{monthLabel}</h1>
+          {googleConnected && (
+            <span className="ml-1 flex items-center gap-1 text-mini text-green-600 dark:text-green-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+              Google 연동
+            </span>
+          )}
         </div>
         {error && (
           <span className="text-xs text-red-600 truncate max-w-[40%]" title={error}>
@@ -163,7 +191,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* 본문 (캘린더 + 상세 패널) */}
+      {/* 본문 */}
       <div className="flex flex-1 min-h-0">
         {/* 캘린더 그리드 */}
         <div className="flex-1 flex flex-col min-w-0 overflow-auto">
@@ -182,95 +210,98 @@ export default function CalendarPage() {
             ))}
           </div>
 
-          {/* 날짜 그리드 */}
-          <div className="grid grid-cols-7 flex-1">
-            {/* 앞쪽 빈 칸 */}
-            {Array.from({ length: firstDay }).map((_, i) => (
-              <div key={`lead${i}`} className="border-r border-b border-border last:border-r-0 bg-muted/10" />
-            ))}
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+              <span className="inline-block w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin mr-2" />
+              불러오는 중...
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 flex-1">
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <div key={`lead${i}`} className="border-r border-b border-border last:border-r-0 bg-muted/10" />
+              ))}
 
-            {/* 날짜 칸 */}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1
-              const date = new Date(viewYear, viewMonth, day)
-              const isToday =
-                day === today.getDate() &&
-                viewMonth === today.getMonth() &&
-                viewYear === today.getFullYear()
-              const isSelected =
-                selected != null &&
-                day === selected.getDate() &&
-                viewMonth === selected.getMonth() &&
-                viewYear === selected.getFullYear()
-              const meetings = meetingsByDate.get(date.toDateString()) ?? []
-              const events = eventsByDate.get(date.toDateString()) ?? []
-              const dow = date.getDay()
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1
+                const date = new Date(viewYear, viewMonth, day)
+                const dow = date.getDay()
 
-              return (
-                <button
-                  key={day}
-                  onClick={() => setSelected(isSelected ? null : date)}
-                  className={clsx(
-                    'flex flex-col items-start p-1.5 min-h-[80px] border-r border-b border-border',
-                    'last:border-r-0 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
-                    isSelected ? 'bg-accent-subtle' : 'hover:bg-muted/40',
-                  )}
-                  aria-label={`${viewYear}년 ${viewMonth + 1}월 ${day}일${
-                    meetings.length + events.length > 0 ? ` (일정 ${meetings.length + events.length}건)` : ''
-                  }`}
-                  aria-pressed={isSelected}
-                >
-                  <span
+                const isToday =
+                  day === today.getDate() &&
+                  viewMonth === today.getMonth() &&
+                  viewYear === today.getFullYear()
+                const isSelected =
+                  selected != null &&
+                  day === selected.getDate() &&
+                  viewMonth === selected.getMonth() &&
+                  viewYear === selected.getFullYear()
+
+                const dayItems = getItemsByDate(date)
+                const meetings = dayItems.filter((x) => x.source === 'workb')
+                const events = dayItems.filter((x) => x.source === 'google')
+
+                return (
+                  <button
+                    key={day}
+                    onClick={() => setSelected(isSelected ? null : date)}
                     className={clsx(
-                      'w-6 h-6 flex items-center justify-center rounded-full text-sm mb-0.5 shrink-0',
-                      isToday
-                        ? 'bg-accent text-accent-foreground font-bold'
-                        : '',
-                      !isToday && dow === 0 && 'text-red-400',
-                      !isToday && dow === 6 && 'text-blue-400',
-                      !isToday && dow !== 0 && dow !== 6 && 'text-foreground',
+                      'flex flex-col items-start p-1.5 min-h-[80px] border-r border-b border-border',
+                      'last:border-r-0 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
+                      isSelected ? 'bg-accent-subtle' : 'hover:bg-muted/40',
                     )}
+                    aria-label={`${viewYear}년 ${viewMonth + 1}월 ${day}일${dayItems.length > 0 ? ` (${dayItems.length}건)` : ''}`}
+                    aria-pressed={isSelected}
                   >
-                    {day}
-                  </span>
-
-                  {/* 일정 칩 (최대 2개: WorkB 우선, 그 다음 Google) */}
-                  {meetings.slice(0, 2).map((m) => (
                     <span
-                      key={m.id}
-                      className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-accent/15 text-accent font-medium leading-tight"
+                      className={clsx(
+                        'w-6 h-6 flex items-center justify-center rounded-full text-sm mb-0.5 shrink-0',
+                        isToday ? 'bg-accent text-accent-foreground font-bold' : '',
+                        !isToday && dow === 0 && 'text-red-400',
+                        !isToday && dow === 6 && 'text-blue-400',
+                        !isToday && dow !== 0 && dow !== 6 && 'text-foreground',
+                      )}
                     >
-                      {m.title}
+                      {day}
                     </span>
-                  ))}
-                  {meetings.length < 2 &&
-                    events.slice(0, 2 - meetings.length).map((ev) => (
+
+                    {/* 일정 칩 (최대 2개: WorkB 우선, 그 다음 Google) */}
+                    {meetings.slice(0, 2).map((m) => (
                       <span
-                        key={ev.id}
-                        className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-green-500/15 text-green-700 dark:text-green-400 font-medium leading-tight"
-                        title="Google Calendar"
+                        key={m.id}
+                        className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-accent/15 text-accent font-medium leading-tight"
+                        title="WorkB"
                       >
-                        {ev.title}
+                        {m.title}
                       </span>
                     ))}
+                    {meetings.length < 2 &&
+                      events.slice(0, 2 - meetings.length).map((ev) => (
+                        <span
+                          key={ev.id}
+                          className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-green-500/15 text-green-700 dark:text-green-400 font-medium leading-tight"
+                          title="Google Calendar"
+                        >
+                          {ev.title}
+                        </span>
+                      ))}
 
-                  {meetings.length + events.length > 2 && (
-                    <span className="text-[10px] text-muted-foreground px-1">
-                      +{meetings.length + events.length - 2}개 더
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+                    {meetings.length + events.length > 2 && (
+                      <span className="text-[10px] text-muted-foreground px-1">
+                        +{meetings.length + events.length - 2}개 더
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
 
-            {/* 뒤쪽 빈 칸 */}
-            {Array.from({ length: trailingCells }).map((_, i) => (
-              <div key={`trail${i}`} className="border-r border-b border-border last:border-r-0 bg-muted/10" />
-            ))}
-          </div>
+              {Array.from({ length: trailingCells }).map((_, i) => (
+                <div key={`trail${i}`} className="border-r border-b border-border last:border-r-0 bg-muted/10" />
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* 날짜 상세 패널 (선택된 날짜가 있을 때) */}
+        {/* 날짜 상세 패널 */}
         {selected && (
           <div className="w-64 shrink-0 border-l border-border flex flex-col">
             <div className="px-4 py-3 border-b border-border shrink-0">
@@ -282,15 +313,14 @@ export default function CalendarPage() {
                 })}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {selectedMeetings.length + selectedEvents.length > 0
-                  ? `일정 ${selectedMeetings.length + selectedEvents.length}건`
-                  : '예정된 일정 없음'}
+                {selectedItems.length > 0 ? `${selectedItems.length}건` : '일정 없음'}
               </p>
             </div>
 
-            {selectedMeetings.length + selectedEvents.length > 0 ? (
+            {selectedItems.length > 0 ? (
               <ul className="flex-1 overflow-y-auto divide-y divide-border">
-                {selectedMeetings.map((m) => (
+                {/* WorkB 회의 */}
+                {selectedWorkbItems.map((m) => (
                   <li key={m.id} className="px-4 py-3">
                     <p className="text-sm font-medium text-foreground truncate">{m.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -319,20 +349,37 @@ export default function CalendarPage() {
                     </span>
                   </li>
                 ))}
-                {selectedEvents.map((ev) => (
-                  <li key={ev.id} className="px-4 py-3">
-                    <p className="text-sm font-medium text-foreground truncate">{ev.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {ev.start
-                        ? new Date(ev.start).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-                        : '—'}
-                      {ev.end
-                        ? ` — ${new Date(ev.end).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
-                        : ''}
-                    </p>
-                    <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/15 text-green-700 dark:text-green-400">
-                      Google Calendar
-                    </span>
+
+                {/* Google Calendar 이벤트 */}
+                {selectedGoogleItems.map((e) => (
+                  <li key={e.id} className="px-4 py-3">
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-green-600 dark:text-green-400 mt-0.5 shrink-0">📅</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{e.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(e.startAt).toLocaleTimeString('ko-KR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                          {e.endAt &&
+                            ` — ${new Date(e.endAt).toLocaleTimeString('ko-KR', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}`}
+                        </p>
+                        {e.htmlLink && (
+                          <a
+                            href={e.htmlLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-green-600 dark:text-green-400 hover:underline mt-0.5 inline-block"
+                          >
+                            Google Calendar에서 보기
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>

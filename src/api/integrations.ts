@@ -104,12 +104,10 @@ export interface GoogleCalendarEvent {
 
 export function getGoogleCalendarEvents(
   workspaceId: number,
-  params: { time_min?: string; max_results?: number } = {},
+  timeMin?: string,
+  maxResults = 50,
 ) {
-  const qs = new URLSearchParams()
-  qs.set('workspace_id', String(workspaceId))
-  if (params.time_min) qs.set('time_min', params.time_min)
-  if (typeof params.max_results === 'number') qs.set('max_results', String(params.max_results))
-  const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  return apiFetch<{ events: GoogleCalendarEvent[] }>(`/integrations/google/events${suffix}`)
+  const params = new URLSearchParams({ workspace_id: String(workspaceId), max_results: String(maxResults) })
+  if (timeMin) params.append('time_min', timeMin)
+  return apiFetch<{ events: GoogleCalendarEvent[] }>(`/integrations/google/events?${params}`)
 }
