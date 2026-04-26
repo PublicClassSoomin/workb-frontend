@@ -30,6 +30,8 @@ interface BackendDashboardResponse {
   weekly_summary: {
     total_count: number
     total_duration_min: number
+    action_items_total?: number
+    action_items_done?: number
     summary_cards: unknown[]
   }
   pending_action_items: {
@@ -123,8 +125,8 @@ export async function fetchWorkspaceDashboard(workspaceId: number) {
   const weeklyStats: WeeklyStats = {
     totalMeetings: data.weekly_summary.total_count,
     totalMinutes: Math.round(data.weekly_summary.total_duration_min),
-    actionItemsTotal: data.pending_action_items.length,
-    actionItemsDone: 0,
+    actionItemsTotal: Math.max(0, Number(data.weekly_summary.action_items_total ?? 0)),
+    actionItemsDone: Math.max(0, Number(data.weekly_summary.action_items_done ?? 0)),
     topParticipant: DEFAULT_TOP_PARTICIPANT,
   }
 

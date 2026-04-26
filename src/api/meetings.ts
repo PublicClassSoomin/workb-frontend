@@ -65,3 +65,11 @@ export async function fetchWorkspaceMeetingsByDateRange(
   )
   return body.data?.meetings ?? []
 }
+
+export async function startWorkspaceMeeting(workspaceId: number, meetingId: number): Promise<void> {
+  await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/start`, { method: 'POST' })
+}
+
+export async function endWorkspaceMeeting(workspaceId: number, meetingId: number): Promise<void> {
+  await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/end`, { method: 'POST' })
+}

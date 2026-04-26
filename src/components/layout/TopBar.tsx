@@ -6,6 +6,8 @@ import type { ThemePreference } from '../../hooks/useThemePreference'
 import NotificationsPanel from './NotificationsPanel'
 import Tooltip from '../ui/Tooltip'
 import { getCurrentWorkspaceRole, WORKSPACE_ROLE_CHANGED_EVENT } from '../../utils/workspace'
+import { apiRequest } from '../../api/client'
+import { getCurrentWorkspaceId } from '../../utils/workspace'
 
 interface TopBarProps {
   themePreference: ThemePreference
@@ -34,6 +36,7 @@ export default function TopBar({
   const [searchQuery, setSearchQuery] = useState('')
   const [notifOpen, setNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
   const [workspaceRole, setWorkspaceRole] = useState(() => getCurrentWorkspaceRole())
 
   useEffect(() => {
@@ -56,6 +59,31 @@ export default function TopBar({
     }
     window.addEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
     return () => window.removeEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    const workspaceId = getCurrentWorkspaceId()
+
+    async function refresh() {
+      try {
+        const res = await apiRequest<{ unread_count: number }>(
+          `/notifications/workspaces/${workspaceId}?limit=1`,
+        )
+        if (!mounted) return
+        setUnreadCount(Number(res.unread_count ?? 0) || 0)
+      } catch {
+        if (!mounted) return
+        setUnreadCount(0)
+      }
+    }
+
+    refresh()
+    const id = window.setInterval(refresh, 30000)
+    return () => {
+      mounted = false
+      window.clearInterval(id)
+    }
   }, [])
 
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -134,7 +162,9 @@ export default function TopBar({
               aria-expanded={notifOpen}
             >
               <Bell size={15} aria-hidden="true" />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
+              )}
             </button>
           </Tooltip>
 

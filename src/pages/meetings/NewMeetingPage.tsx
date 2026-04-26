@@ -39,9 +39,11 @@ export default function NewMeetingPage() {
   const location = useLocation()
   const processedDraftKeyRef = useRef<string | null>(null)
   const editMeetingIdRef = useRef<string | null>(null)
+  const syncTouchedRef = useRef(false)
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
   const [googleConnected, setGoogleConnected] = useState(false)
   const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false)
+  const [editHasGoogleEvent, setEditHasGoogleEvent] = useState<boolean | null>(null)
 
   function todayYmd() {
     const d = new Date()
@@ -101,8 +103,11 @@ export default function NewMeetingPage() {
         const connected = Boolean(google?.is_connected)
         setGoogleConnected(connected)
         // 기본값: 연동돼 있으면 자동 등록 ON
-        if (!connected) setSyncGoogleCalendar(false)
-        else if (!editMeetingIdRef.current) setSyncGoogleCalendar(true)
+        if (!connected) {
+          setSyncGoogleCalendar(false)
+        } else if (!editMeetingIdRef.current && !syncTouchedRef.current) {
+          setSyncGoogleCalendar(true)
+        }
       })
       .catch(() => {
         if (!mounted) return
@@ -153,6 +158,8 @@ export default function NewMeetingPage() {
     if (!draft) {
       processedDraftKeyRef.current = null
       editMeetingIdRef.current = null
+      syncTouchedRef.current = false
+      setEditHasGoogleEvent(null)
       return
     }
     const dedupeKey = `${location.key}|${draft.id}|${draft.startAt}`
@@ -168,9 +175,17 @@ export default function NewMeetingPage() {
     setSelectedParticipants(
       draft.participants?.length ? draft.participants.map((p) => ({ ...p })) : [],
     )
-    // 수정 화면에서는 "이미 구글 이벤트가 연결된 회의"라면 기본 체크
-    setSyncGoogleCalendar(Boolean(draft.googleCalendarEventId) || googleConnected)
+    syncTouchedRef.current = false
+    setEditHasGoogleEvent(Boolean(draft.googleCalendarEventId))
   }, [location.key, location.state])
+
+  // 수정 화면: draft 로딩 + googleConnected 로딩이 끝난 뒤에도 기본 체크 상태를 동기화
+  useEffect(() => {
+    if (!editMeetingIdRef.current) return
+    if (editHasGoogleEvent === null) return
+    if (syncTouchedRef.current) return
+    setSyncGoogleCalendar(Boolean(editHasGoogleEvent) || googleConnected)
+  }, [googleConnected, editHasGoogleEvent])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -581,7 +596,10 @@ export default function NewMeetingPage() {
             <input
               type="checkbox"
               checked={syncGoogleCalendar}
-              onChange={(e) => setSyncGoogleCalendar(e.target.checked)}
+              onChange={(e) => {
+                syncTouchedRef.current = true
+                setSyncGoogleCalendar(e.target.checked)
+              }}
               disabled={!googleConnected}
               aria-label="Google Calendar 자동 등록"
             />

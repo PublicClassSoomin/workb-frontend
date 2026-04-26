@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Clock, Users, Calendar, Video, Trash2, Edit2 } from 'lucide-react'
 import { formatTime } from '../../utils/format'
-import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
+import { persistMeetingSnapshot, readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
 import type { Meeting } from '../../types/meeting'
+import Tooltip from '../../components/ui/Tooltip'
 import {
   getCurrentWorkspaceId,
   getCurrentWorkspaceRole,
@@ -11,6 +12,7 @@ import {
   WORKSPACE_ROLE_CHANGED_EVENT,
 } from '../../utils/workspace'
 import { fetchWorkspaceMeetingDetail } from '../../api/meetings'
+import { startWorkspaceMeeting } from '../../api/meetings'
 import { apiRequest } from '../../api/client'
 
 export default function UpcomingMeetingPage() {
@@ -126,6 +128,7 @@ export default function UpcomingMeetingPage() {
   const diffMs = startDate.getTime() - Date.now()
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+  const canEnter = diffMs <= 30 * 60 * 1000
 
   const countdownLabel =
     diffMs <= 0
@@ -221,13 +224,32 @@ export default function UpcomingMeetingPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <button
-          onClick={() => navigate(`/live/${meeting.id}`)}
-          className="flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+        <Tooltip
+          label={!canEnter ? '아직 회의시간이 아닙니다.' : ''}
+          placement="top"
+          block
         >
-          <Video size={15} />
-          회의 입장
-        </button>
+          <button
+            disabled={!canEnter}
+            onClick={() => {
+              if (!canEnter) return
+              // Live 페이지가 아직 목업 기반이어서, 실제 회의 정보를 스냅샷으로 전달
+              persistMeetingSnapshot(meeting)
+              startWorkspaceMeeting(workspaceId, Number(meeting.id)).catch(() => {
+                // 상태 전환 실패해도 입장은 허용 (대시보드 분류만 늦게 반영될 수 있음)
+              })
+              navigate(`/live/${meeting.id}`, { state: { meeting } })
+            }}
+            className={
+              canEnter
+                ? 'flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors'
+                : 'flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-muted text-muted-foreground text-sm font-medium cursor-not-allowed'
+            }
+          >
+            <Video size={15} />
+            회의 입장
+          </button>
+        </Tooltip>
       </div>
 
       {workspaceRole === 'admin' && (
