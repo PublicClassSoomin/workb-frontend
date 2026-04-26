@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import clsx from 'clsx'
-import { getCurrentWorkspaceId } from '../api/client'
-import { fetchWorkspaceDashboard } from '../api/dashboard'
-import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/integrations'
 import type { Meeting } from '../types/meeting'
+import { fetchWorkspaceMeetingsByDateRange } from '../api/meetings'
+import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../utils/workspace'
+import { getGoogleCalendarEvents, type GoogleCalendarEvent } from '../api/integrations'
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
-
 const STATUS_LABEL: Record<Meeting['status'], string> = {
   inprogress: '진행 중',
   upcoming: '예정',
@@ -32,57 +31,91 @@ export default function CalendarPage() {
   const [items, setItems] = useState<CalendarItem[]>([])
   const [loading, setLoading] = useState(true)
   const [googleConnected, setGoogleConnected] = useState(false)
-  const workspaceId = getCurrentWorkspaceId()
+  const [error, setError] = useState<string | null>(null)
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
 
-  // workb 회의 초기 로드
+  // Listen to workspace changes event
   useEffect(() => {
+    function onWsChanged(e: Event) {
+      const id = (e as CustomEvent<{ id: number }>).detail?.id
+      if (typeof id === 'number' && Number.isFinite(id)) setWorkspaceId(id)
+    }
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
+  // Load workb meetings for given workspace and month
+  useEffect(() => {
+    let cancelled = false
     async function load() {
       setLoading(true)
+      setError(null)
       try {
-        const dashData = await fetchWorkspaceDashboard(workspaceId).catch(() => null)
-        const workbItems: CalendarItem[] = []
-        if (dashData) {
-          dashData.meetings.forEach((m) => {
-            workbItems.push({
-              id: m.id,
-              title: m.title,
-              startAt: m.startAt,
-              endAt: m.endAt,
-              source: 'workb',
-              status: m.status,
-            })
-          })
+        // fetch workb meetings
+        const from = new Date(viewYear, viewMonth, 1)
+        const to = new Date(viewYear, viewMonth + 1, 0)
+        const [rows] = await Promise.all([
+          fetchWorkspaceMeetingsByDateRange(workspaceId, from, to),
+        ])
+        const workbItems: CalendarItem[] = (rows ?? []).map((r) => {
+          const startAt = r.scheduled_at ?? from.toISOString()
+          return {
+            id: String(r.meeting_id),
+            title: r.title,
+            status: 'upcoming',
+            startAt,
+            source: 'workb',
+          }
+        })
+        if (!cancelled) {
+          setItems(workbItems)
         }
-        setItems(workbItems)
+      } catch (e) {
+        if (!cancelled) {
+          setItems([])
+          setError(e instanceof Error ? e.message : String(e))
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     load()
-  }, [workspaceId])
+    return () => {
+      cancelled = true
+    }
+  }, [workspaceId, viewYear, viewMonth])
 
-  // 월이 바뀔 때 Google Calendar 이벤트 재조회 (성공 여부로 연동 상태 자동 감지)
+  // Load Google Calendar events for given workspace and month
   useEffect(() => {
-    const timeMin = new Date(viewYear, viewMonth, 1).toISOString()
-    getGoogleCalendarEvents(workspaceId, timeMin, 50)
-      .then((res) => {
-        setGoogleConnected(true)
-        setItems((prev) => {
-          const withoutGoogle = prev.filter((i) => i.source !== 'google')
-          const googleItems: CalendarItem[] = res.events.map((e: GoogleCalendarEvent) => ({
-            id: `gcal-${e.id}`,
-            title: e.title,
-            startAt: e.start,
-            endAt: e.end,
-            source: 'google',
-            htmlLink: e.html_link,
-          }))
-          return [...withoutGoogle, ...googleItems]
-        })
-      })
-      .catch(() => setGoogleConnected(false))
+    let cancelled = false
+    async function loadGoogle() {
+      const timeMin = new Date(viewYear, viewMonth, 1).toISOString()
+      try {
+        const res = await getGoogleCalendarEvents(workspaceId, timeMin, 250)
+        if (!cancelled) {
+          setGoogleConnected(true)
+          setItems((prev) => {
+            const withoutGoogle = prev.filter((i) => i.source !== 'google')
+            const googleItems: CalendarItem[] = (Array.isArray(res.events) ? res.events : []).map((e: GoogleCalendarEvent) => ({
+              id: `gcal-${e.id}`,
+              title: e.title,
+              startAt: e.start,
+              endAt: e.end,
+              source: 'google',
+              htmlLink: e.html_link ?? undefined,
+            }))
+            return [...withoutGoogle, ...googleItems]
+          })
+        }
+      } catch {
+        if (!cancelled) setGoogleConnected(false)
+      }
+    }
+    loadGoogle()
+    return () => {
+      cancelled = true
+    }
   }, [viewYear, viewMonth, workspaceId])
-
   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString('ko-KR', {
@@ -125,6 +158,11 @@ export default function CalendarPage() {
             </span>
           )}
         </div>
+        {error && (
+          <span className="text-xs text-red-600 truncate max-w-[40%]" title={error}>
+            {error}
+          </span>
+        )}
         <div className="flex items-center gap-1">
           <button
             onClick={prevMonth}
@@ -186,6 +224,8 @@ export default function CalendarPage() {
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1
                 const date = new Date(viewYear, viewMonth, day)
+                const dow = date.getDay()
+
                 const isToday =
                   day === today.getDate() &&
                   viewMonth === today.getMonth() &&
@@ -195,8 +235,10 @@ export default function CalendarPage() {
                   day === selected.getDate() &&
                   viewMonth === selected.getMonth() &&
                   viewYear === selected.getFullYear()
+
                 const dayItems = getItemsByDate(date)
-                const dow = date.getDay()
+                const meetings = dayItems.filter((x) => x.source === 'workb')
+                const events = dayItems.filter((x) => x.source === 'google')
 
                 return (
                   <button
@@ -222,22 +264,30 @@ export default function CalendarPage() {
                       {day}
                     </span>
 
-                    {dayItems.slice(0, 2).map((item) => (
+                    {/* 일정 칩 (최대 2개: WorkB 우선, 그 다음 Google) */}
+                    {meetings.slice(0, 2).map((m) => (
                       <span
-                        key={item.id}
-                        className={clsx(
-                          'w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 font-medium leading-tight',
-                          item.source === 'google'
-                            ? 'bg-green-500/15 text-green-700 dark:text-green-400'
-                            : 'bg-accent/15 text-accent',
-                        )}
+                        key={m.id}
+                        className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-accent/15 text-accent font-medium leading-tight"
+                        title="WorkB"
                       >
-                        {item.source === 'google' ? '📅 ' : ''}{item.title}
+                        {m.title}
                       </span>
                     ))}
-                    {dayItems.length > 2 && (
+                    {meetings.length < 2 &&
+                      events.slice(0, 2 - meetings.length).map((ev) => (
+                        <span
+                          key={ev.id}
+                          className="w-full truncate text-[10px] px-1 py-0.5 rounded mb-0.5 bg-green-500/15 text-green-700 dark:text-green-400 font-medium leading-tight"
+                          title="Google Calendar"
+                        >
+                          {ev.title}
+                        </span>
+                      ))}
+
+                    {meetings.length + events.length > 2 && (
                       <span className="text-[10px] text-muted-foreground px-1">
-                        +{dayItems.length - 2}개 더
+                        +{meetings.length + events.length - 2}개 더
                       </span>
                     )}
                   </button>

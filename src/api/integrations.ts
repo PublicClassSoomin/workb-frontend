@@ -92,13 +92,14 @@ export function saveSlackChannel(workspaceId: number, channelId: string) {
   )
 }
 
+// --- Google Calendar events ---
 export interface GoogleCalendarEvent {
   id: string
   title: string
   start: string
   end: string
-  description?: string
-  html_link?: string
+  description?: string | null
+  html_link?: string | null
 }
 
 export function getGoogleCalendarEvents(

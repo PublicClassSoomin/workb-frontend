@@ -1,7 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import clsx from 'clsx'
 import type { Meeting } from '../../types/meeting'
+import { getGoogleCalendarEvents } from '../../api/integrations'
+import { getCurrentWorkspaceId } from '../../utils/workspace'
+
+function googleCalendarHomeUrl(): string {
+  return 'https://calendar.google.com/calendar/u/0/r'
+}
 
 function getMeetingDates(meetings: Meeting[]): Set<string> {
   const s = new Set<string>()
@@ -14,6 +20,7 @@ export default function MiniCalendar({ meetings = [] }: { meetings?: Meeting[] }
   const [viewYear, setViewYear] = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth()) // 0-indexed
   const [selected, setSelected] = useState<Date | null>(null)
+  const htmlLinkByEventIdRef = useRef<Map<string, string>>(new Map())
 
   const meetingDates = useMemo(() => getMeetingDates(meetings), [meetings])
 
@@ -155,7 +162,40 @@ export default function MiniCalendar({ meetings = [] }: { meetings?: Meeting[] }
             {targetDate.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })} 일정
           </p>
           {dayMeetings.map((m) => (
-            <div key={m.id} className="flex items-center gap-2">
+            <button
+              key={m.id}
+              type="button"
+              className="flex items-center gap-2 text-left hover:bg-muted/40 rounded px-1 py-1 -mx-1 transition-colors"
+              onClick={async () => {
+                if (!m.googleCalendarEventId) return
+                const cached = htmlLinkByEventIdRef.current.get(m.googleCalendarEventId)
+                if (cached) {
+                  window.open(cached, '_blank', 'noopener,noreferrer')
+                  return
+                }
+
+                try {
+                  const workspaceId = getCurrentWorkspaceId()
+                  // 선택 날짜의 시작 시각 기준으로 이후 이벤트를 넉넉히 가져온다.
+                  const timeMin = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).toISOString()
+                  const res = await getGoogleCalendarEvents(workspaceId, { time_min: timeMin, max_results: 250 })
+                  for (const ev of res.events ?? []) {
+                    if (ev?.id && ev?.html_link) htmlLinkByEventIdRef.current.set(ev.id, ev.html_link)
+                  }
+                  const link = htmlLinkByEventIdRef.current.get(m.googleCalendarEventId)
+                  window.open(link ?? googleCalendarHomeUrl(), '_blank', 'noopener,noreferrer')
+                } catch {
+                  window.open(googleCalendarHomeUrl(), '_blank', 'noopener,noreferrer')
+                }
+              }}
+              disabled={!m.googleCalendarEventId}
+              aria-label={
+                m.googleCalendarEventId
+                  ? `${m.title} Google Calendar에서 열기`
+                  : `${m.title} (Google Calendar 미연동)`
+              }
+              title={m.googleCalendarEventId ? 'Google Calendar에서 열기' : 'Google Calendar 미연동'}
+            >
               <span
                 className={clsx(
                   'w-1.5 h-1.5 rounded-full shrink-0',
@@ -173,7 +213,7 @@ export default function MiniCalendar({ meetings = [] }: { meetings?: Meeting[] }
                   {m.endAt && ` — ${new Date(m.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`}
                 </p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
