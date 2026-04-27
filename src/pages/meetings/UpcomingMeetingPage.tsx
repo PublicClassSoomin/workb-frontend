@@ -2,10 +2,17 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Clock, Users, Calendar, Video, Trash2, Edit2 } from 'lucide-react'
 import { formatTime } from '../../utils/format'
-import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
+import { persistMeetingSnapshot, readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
 import type { Meeting } from '../../types/meeting'
-import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
+import Tooltip from '../../components/ui/Tooltip'
+import {
+  getCurrentWorkspaceId,
+  getCurrentWorkspaceRole,
+  WORKSPACE_CHANGED_EVENT,
+  WORKSPACE_ROLE_CHANGED_EVENT,
+} from '../../utils/workspace'
 import { fetchWorkspaceMeetingDetail } from '../../api/meetings'
+import { startWorkspaceMeeting } from '../../api/meetings'
 import { apiRequest } from '../../api/client'
 
 export default function UpcomingMeetingPage() {
@@ -15,6 +22,7 @@ export default function UpcomingMeetingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+  const [workspaceRole, setWorkspaceRole] = useState(() => getCurrentWorkspaceRole())
 
   useEffect(() => {
     function onWsChanged(e: Event) {
@@ -23,6 +31,15 @@ export default function UpcomingMeetingPage() {
     }
     window.addEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
     return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, onWsChanged)
+  }, [])
+
+  useEffect(() => {
+    function onRoleChanged(e: Event) {
+      const role = (e as CustomEvent<{ role: string }>).detail?.role
+      if (typeof role === 'string') setWorkspaceRole(role)
+    }
+    window.addEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
+    return () => window.removeEventListener(WORKSPACE_ROLE_CHANGED_EVENT, onRoleChanged)
   }, [])
 
   useEffect(() => {
@@ -111,6 +128,7 @@ export default function UpcomingMeetingPage() {
   const diffMs = startDate.getTime() - Date.now()
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+  const canEnter = diffMs <= 30 * 60 * 1000
 
   const countdownLabel =
     diffMs <= 0
@@ -206,49 +224,70 @@ export default function UpcomingMeetingPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <button
-          onClick={() => navigate(`/live/${meeting.id}`)}
-          className="flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+        <Tooltip
+          label={!canEnter ? '아직 회의시간이 아닙니다.' : ''}
+          placement="top"
+          block
         >
-          <Video size={15} />
-          회의 입장
-        </button>
-      </div>
-
-      <div className="mt-4 flex items-center justify-end gap-3">
-        <Link
-          to="/meetings/new"
-          state={{ draftMeeting: meeting }}
-          className="inline-flex items-center gap-1.5 text-mini text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Edit2 size={13} aria-hidden="true" />
-          수정
-        </Link>
-        <button
-          type="button"
-          onClick={async () => {
-            if (!meetingId) return
-            const ok = window.confirm('회의를 삭제하시겠습니까?')
-            if (!ok) return
-
-            try {
-              await apiRequest<void>(
-                `/meetings/workspaces/${workspaceId}/${meetingId}`,
-                { method: 'DELETE' },
-              )
-            } catch (err) {
-              alert(`회의 삭제 실패\n${err instanceof Error ? err.message : String(err)}`)
-              return
+          <button
+            disabled={!canEnter}
+            onClick={() => {
+              if (!canEnter) return
+              // Live 페이지가 아직 목업 기반이어서, 실제 회의 정보를 스냅샷으로 전달
+              persistMeetingSnapshot(meeting)
+              startWorkspaceMeeting(workspaceId, Number(meeting.id)).catch(() => {
+                // 상태 전환 실패해도 입장은 허용 (대시보드 분류만 늦게 반영될 수 있음)
+              })
+              navigate(`/live/${meeting.id}`, { state: { meeting } })
+            }}
+            className={
+              canEnter
+                ? 'flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors'
+                : 'flex items-center justify-center gap-2 flex-1 h-10 rounded-lg bg-muted text-muted-foreground text-sm font-medium cursor-not-allowed'
             }
-
-            navigate('/')
-          }}
-          className="inline-flex items-center gap-1.5 text-mini text-red-600 hover:text-red-700 transition-colors"
-        >
-          <Trash2 size={13} aria-hidden="true" />
-          삭제
-        </button>
+          >
+            <Video size={15} />
+            회의 입장
+          </button>
+        </Tooltip>
       </div>
+
+      {workspaceRole === 'admin' && (
+        <div className="mt-4 flex items-center justify-end gap-3">
+          <Link
+            to="/meetings/new"
+            state={{ draftMeeting: meeting }}
+            className="inline-flex items-center gap-1.5 text-mini text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Edit2 size={13} aria-hidden="true" />
+            수정
+          </Link>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!meetingId) return
+              const ok = window.confirm('회의를 삭제하시겠습니까?')
+              if (!ok) return
+
+              try {
+                await apiRequest<void>(
+                  `/meetings/workspaces/${workspaceId}/${meetingId}`,
+                  { method: 'DELETE' },
+                )
+              } catch (err) {
+                alert(`회의 삭제 실패\n${err instanceof Error ? err.message : String(err)}`)
+                return
+              }
+
+              navigate('/')
+            }}
+            className="inline-flex items-center gap-1.5 text-mini text-red-600 hover:text-red-700 transition-colors"
+          >
+            <Trash2 size={13} aria-hidden="true" />
+            삭제
+          </button>
+        </div>
+      )}
     </div>
   )
 }

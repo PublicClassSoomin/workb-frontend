@@ -164,3 +164,9 @@ export function deleteDepartment(workspaceId: number, departmentId: number): Pro
     method: 'DELETE',
   })
 }
+
+export function deleteWorkspace(workspaceId: number): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/workspaces/${workspaceId}`, {
+    method: 'DELETE',
+  })
+}

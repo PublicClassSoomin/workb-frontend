@@ -36,6 +36,7 @@ export interface Meeting {
   status: MeetingStatus
   startAt: string        // ISO 8601
   endAt?: string
+  googleCalendarEventId?: string
   participants: Participant[]
   agenda?: string[]
   summary?: string

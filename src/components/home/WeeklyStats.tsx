@@ -6,7 +6,10 @@ interface WeeklyStatsProps {
 }
 
 export default function WeeklyStatsCard({ stats }: WeeklyStatsProps) {
-  const completionRate = Math.round((stats.actionItemsDone / stats.actionItemsTotal) * 100)
+  const hasActions = stats.actionItemsTotal > 0
+  const completionRate = hasActions
+    ? Math.round((stats.actionItemsDone / stats.actionItemsTotal) * 100)
+    : 0
 
   return (
     <div className="p-4 rounded-lg border bg-card">
@@ -43,7 +46,7 @@ export default function WeeklyStatsCard({ stats }: WeeklyStatsProps) {
             액션 아이템 완료율
           </span>
           <span className="font-medium text-foreground">
-            {stats.actionItemsDone} / {stats.actionItemsTotal}
+            {hasActions ? `${stats.actionItemsDone} / ${stats.actionItemsTotal}` : '0 / 0'}
           </span>
         </div>
         <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -52,7 +55,9 @@ export default function WeeklyStatsCard({ stats }: WeeklyStatsProps) {
             style={{ width: `${completionRate}%` }}
           />
         </div>
-        <span className="text-micro text-muted-foreground">{completionRate}% 완료</span>
+        <span className="text-micro text-muted-foreground">
+          {hasActions ? `${completionRate}% 완료` : '액션이 없습니다.'}
+        </span>
       </div>
     </div>
   )
