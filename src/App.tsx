@@ -31,6 +31,7 @@ import NotesEditPage from './pages/meetings/NotesEditPage'
 import WbsPage from './pages/meetings/WbsPage'
 import ReportsPage from './pages/meetings/ReportsPage'
 import ExportPage from './pages/meetings/ExportPage'
+import MeetingSelectPage from './pages/meetings/MeetingSelectPage'
 import UpcomingMeetingPage from './pages/meetings/UpcomingMeetingPage'
 
 // Live pages
@@ -103,6 +104,7 @@ export default function App() {
           <Route path="meetings/:meetingId/upcoming" element={<UpcomingMeetingPage />} />
 
           {/* 회의: 사후 */}
+          <Route path="meetings/post" element={<MeetingSelectPage />} />
           <Route path="meetings/:meetingId/notes" element={<NotesPage />} />
           <Route path="meetings/:meetingId/notes/edit" element={<NotesEditPage />} />
           <Route path="meetings/:meetingId/wbs" element={<WbsPage />} />

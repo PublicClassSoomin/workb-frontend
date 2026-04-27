@@ -34,6 +34,7 @@ import { useAuth } from "../../context/AuthContext";
 import {
   getCurrentWorkspaceId,
   setCurrentWorkspaceId,
+  setCurrentWorkspaceRole,
 } from "../../utils/workspace";
 import {
   fetchMyWorkspaces,
@@ -111,6 +112,9 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
         const next = ui.some((w) => w.id === stored) ? stored : ui[0]?.id;
         if (next && next !== stored) setCurrentWorkspaceId(next);
         if (next) setCurrentId(next);
+
+        const currentWs = ui.find((w) => w.id === (next ?? stored)) ?? ui[0];
+        if (currentWs) setCurrentWorkspaceRole(currentWs.role);
       })
       .catch(() => {
         // 목록 API가 실패해도 앱이 완전히 멈추지 않도록 빈 목록 유지
@@ -152,6 +156,7 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
     setOpen(false);
     triggerRef.current?.focus();
     setCurrentWorkspaceId(ws.id);
+    setCurrentWorkspaceRole(ws.role);
     navigate("/");
   }
 
@@ -290,7 +295,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "회의",
     items: [
-      { to: "/meetings/new", label: "회의 생성 · 예약", icon: Plus },
+      { to: "/meetings/new", label: "회의 생성 · 예약", icon: Plus, adminOnly: true },
       { to: "/meetings/context", label: "이전 회의 맥락", icon: Search },
       { to: "/live/2", label: "실시간 회의", icon: Video },
     ],
@@ -298,10 +303,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "회의 후",
     items: [
-      { to: "/meetings/3/notes", label: "회의록", icon: FileText },
+      { to: "/meetings/post", label: "회의록 · 보고서", icon: FileText },
       { to: "/meetings/3/wbs", label: "WBS · 태스크", icon: ListTodo },
-      { to: "/meetings/3/reports", label: "보고서 생성", icon: FileBarChart },
-      { to: "/meetings/3/export", label: "내보내기 · 공유", icon: Share2 },
     ],
   },
   {

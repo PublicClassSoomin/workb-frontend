@@ -8,6 +8,28 @@ interface MeetingDetailResponseBody {
   message?: string
 }
 
+interface MeetingSearchItem {
+  meeting_id: number
+  title: string
+  scheduled_at?: string | null
+  participants?: { user_id: number; name: string }[]
+  summary?: string | null
+}
+
+interface MeetingSearchResponseBody {
+  success: boolean
+  data: { meetings: MeetingSearchItem[] }
+  message?: string
+}
+
+function toDateParam(d: Date): string {
+  // backend expects YYYY-MM-DD
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 /**
  * GET /api/v1/meetings/workspaces/{workspaceId}/{meetingId}
  * 홈·캘린더 등에서 숫자 id로 연 회의 상세(예정/진행/완료 공통 스키마).
@@ -23,4 +45,31 @@ export async function fetchWorkspaceMeetingDetail(
     throw new Error('Meeting detail API: empty data')
   }
   return mapApiMeetingItemToMeeting(body.data)
+}
+
+/**
+ * GET /api/v1/knowledges/workspaces/{workspaceId}/meetings/search
+ * 캘린더용: 워크스페이스 회의를 기간으로 조회.
+ */
+export async function fetchWorkspaceMeetingsByDateRange(
+  workspaceId: number,
+  from: Date,
+  to: Date,
+): Promise<MeetingSearchItem[]> {
+  const qs = new URLSearchParams({
+    from_date: toDateParam(from),
+    to_date: toDateParam(to),
+  })
+  const body = await apiRequest<MeetingSearchResponseBody>(
+    `/knowledges/workspaces/${workspaceId}/meetings/search?${qs.toString()}`,
+  )
+  return body.data?.meetings ?? []
+}
+
+export async function startWorkspaceMeeting(workspaceId: number, meetingId: number): Promise<void> {
+  await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/start`, { method: 'POST' })
+}
+
+export async function endWorkspaceMeeting(workspaceId: number, meetingId: number): Promise<void> {
+  await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/end`, { method: 'POST' })
 }

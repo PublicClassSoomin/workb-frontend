@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Plus, Trash2, GripVertical, Clock, User, Paperclip, Play } from 'lucide-react'
 import { AGENDA_M1 } from '../../data/mockAgenda'
 import type { AgendaItem } from '../../types/agenda'
+import { startWorkspaceMeeting } from '../../api/meetings'
+import { getCurrentWorkspaceId } from '../../utils/workspace'
 
 export default function AgendaPage() {
   const { meetingId } = useParams()
@@ -37,7 +39,14 @@ export default function AgendaPage() {
           <p className="text-sm text-muted-foreground mt-0.5">회의 ID: {meetingId} · 총 예상 시간: {totalMin}분</p>
         </div>
         <button
-          onClick={() => navigate(`/live/${meetingId}`)}
+          onClick={() => {
+            const wsid = getCurrentWorkspaceId()
+            const numericId = Number(meetingId)
+            if (Number.isFinite(numericId) && numericId > 0) {
+              startWorkspaceMeeting(wsid, numericId).catch(() => {})
+            }
+            navigate(`/live/${meetingId}`)
+          }}
           className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
         >
           <Play size={14} /> 회의 시작
