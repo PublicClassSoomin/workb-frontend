@@ -128,7 +128,7 @@ export default function UpcomingMeetingPage() {
   const diffMs = startDate.getTime() - Date.now()
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-  const canEnter = diffMs <= 30 * 60 * 1000
+  const canEnter = true
 
   const countdownLabel =
     diffMs <= 0
@@ -225,14 +225,12 @@ export default function UpcomingMeetingPage() {
 
       <div className="flex flex-col sm:flex-row gap-3">
         <Tooltip
-          label={!canEnter ? '아직 회의시간이 아닙니다.' : ''}
+          label=""
           placement="top"
           block
         >
           <button
-            disabled={!canEnter}
             onClick={() => {
-              if (!canEnter) return
               // Live 페이지가 아직 목업 기반이어서, 실제 회의 정보를 스냅샷으로 전달
               persistMeetingSnapshot(meeting)
               startWorkspaceMeeting(workspaceId, Number(meeting.id)).catch(() => {

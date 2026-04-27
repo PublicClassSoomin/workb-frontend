@@ -18,6 +18,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+.envrc
 
 # TypeScript
 *.tsbuildinfo
@@ -35,7 +36,22 @@ pnpm-debug.log*
 # Local tool settings
 .claude/
 .cursor/
+.turbo/
+.cache/
+.eslintcache
 CLAUDE.md
 
 # code-review-graph (코드 리뷰 그래프 MCP/CLI — 로컬 그래프 DB·캐시·인덱스)
 .code-review-graph/
+
+# Security artifacts
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+secrets.json
+credentials.json
+token.json
