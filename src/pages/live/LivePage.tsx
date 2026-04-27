@@ -4,7 +4,6 @@ import {
   Mic, MicOff, Camera, CameraOff, Square,
   Search, Monitor, Users, MessageSquare, CheckSquare, Zap,
   Globe, Database, History, ExternalLink,
-  Sparkles, FileText, BarChart2,
   CheckCircle, AlertCircle, UserPlus, X,
 } from 'lucide-react'
 import LiveScreenPage from '../../pages/live/LiveScreenPage'
