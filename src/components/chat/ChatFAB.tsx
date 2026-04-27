@@ -6,7 +6,8 @@ import WorkbAssistantAvatar from './WorkbAssistantAvatar'
 import type { ChatMessage } from '../../types/chat'
 import { useLocation } from 'react-router-dom'
 import { getCurrentWorkspaceId } from '../../api/client'
-import { sendChatMessage, getChatHistory } from '../../api/chatbot'
+import { sendChatMessage, getChatHistory, getPastMeetings, type PastMeeting } from '../../api/chatbot'
+import remarkGfm from 'remark-gfm'
 
 // sessionStorge 키 - workspace별로 세션 분리
 // 탭 닫으면 자동 만료 -> 새 탭에서 새 대화 시작
@@ -36,6 +37,73 @@ function getWelcomeMessage(meetingId: number | null): ChatMessage {
   }
 }
 
+// 이전 회의 선택 UI - 2개 이상일 때 인라인으로 표
+function MeetingSelectorCard({ 
+  meetings,
+  onConfirm 
+}: {
+    meetings: PastMeeting[]
+    onConfirm: (ids: number[] | null) => void // null = 전체
+}) {
+  const [mode, setMode] = useState<'ask' | 'select'>('ask')
+  const [checked, setChecked] = useState<Set<number>>(new Set())
+
+  if (mode === 'ask') {
+    return (
+      <div className="mx-2 p-3 rounded-xl bg-muted border border-border text-sm">
+        <p className="text-foreground mb-2">어떤 회의를 기준으로 할까요?</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onConfirm(null)} // null = 전체 검색
+            className="px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs
+hover:bg-accent/90 transition-colors"
+          >
+            전체 회의
+          </button>
+          <button
+            onClick={() => setMode('select')}
+            className="px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-muted/60
+transition-colors"
+          >
+            회의 선택 ▾
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-2 p-3 rounded-xl bg-muted border border-border text-sm">
+      <p className="text-foreground mb-2">검색할 회의를 선택하세요 (복수 선택 가능)</p>
+      <div className="flex flex-col gap-1.5 mb-3 max-h-40 overflow-y-auto">
+        {meetings.map((m) => (
+          <label key={m.meeting_id} className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={checked.has(m.meeting_id)}
+              onChange={(e) => {
+                const next = new Set(checked)
+                e.target.checked ? next.add(m.meeting_id) : next.delete(m.meeting_id)
+                setChecked(next)
+              }}
+              className="accent-accent"
+            />
+            <span className="text-foreground text-xs">{m.title}</span>
+          </label>
+        ))}
+      </div>
+      <button
+        disabled={checked.size === 0}
+        onClick={() => onConfirm([...checked])}
+        className="px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs disabled:opacity-40
+disabled:cursor-not-allowed transition-colors"
+      >
+        확인 ({checked.size}개 선택)
+      </button>
+    </div>
+  )
+}
+
 export default function ChatFAB() {
   const [open, setOpen] = useState(false)
   const location = useLocation()
@@ -50,11 +118,26 @@ export default function ChatFAB() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const [pastMeetings, setPastMeetings] = useState<PastMeeting[]>([])
+  const [pastMeetingsLoaded, setPastMeetingsLoaded] = useState(false)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null) // 선택 대기 중인 메시지
+  const [showMeetingSelector, setShowMeetingSelector] = useState(false) // 이전 회의 선택 UI 표시 여부
+
   const workspaceId = getCurrentWorkspaceId()
 
   // 챗봇 첫 오픈 시 sessionStorage에 session_id 있으면 히스토리 복원
   useEffect(() => {
     if (!open) return
+
+    // 이전 회의 목록 로드 - 2개 이상이면 선택 UI 사용
+    getPastMeetings(workspaceId)
+      .then(({ meetings }) => {
+        setPastMeetings(meetings)
+        setPastMeetingsLoaded(true)
+      })
+      .catch(() => setPastMeetingsLoaded(true)) // 실패해도 block 안 함
+
+    // 세션 복원 - 세션 없으면 웰컴 메시지 유지
     const existingSessionId = sessionStorage.getItem(sessionKey(workspaceId))
     if (!existingSessionId) return
     
@@ -97,36 +180,31 @@ export default function ChatFAB() {
     }
   }, [open, messages])
 
-  async function handleSend() {
-    const text = input.trim()
-    if (!text || isLoading) return
-    
-    // 사용자 메시지 즉시 표시
-    const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: text,
-      timestamp: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-    setInput('')
+  // 실제 API 전송 - handleSend와 MeetingSelectorCard 확인 후 공통 사용
+  async function sendMessage(text: string, meetingIds: number[] | null) {
     setIsLoading(true)
-    
     try {
       const sessionId = sessionStorage.getItem(sessionKey(workspaceId))
-      const res = await sendChatMessage(workspaceId, text, meetingId, sessionId)
+      const res = await sendChatMessage(workspaceId, text, meetingId, sessionId, meetingIds)
 
       // 서버 발급 session_id를 sessionStorage에 저장
-      // 이미 있으면 덮어씀 (같은 값이므로 문제 없음)
       sessionStorage.setItem(sessionKey(workspaceId), res.session_id)
 
-      const assistantMsg: ChatMessage = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: res.answer,
-        timestamp: res.timestamp,
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: res.answer,
+          timestamp: res.timestamp,
+        },
+      ])
+
+      // 백엔드가 회의 선택을 요청하는 경우(past_summary + 선택 안내) → 선택 UI 재표시
+      if (res.function_type === 'past_summary' && res.answer.includes('선택해주세요')) {
+        setPendingMessage(text)
+        setShowMeetingSelector(true)
       }
-      setMessages((prev) => [...prev, assistantMsg])
     } catch {
       // 에러 시 인라인 메시지로 표시 - 토스트 없이 대화 흐름 안에서 처리
       setMessages((prev) => [
@@ -136,19 +214,48 @@ export default function ChatFAB() {
           role: 'assistant',
           content: '요청 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
           timestamp: new Date().toISOString(),
-        }
+        },
       ])
     } finally {
       setIsLoading(false)
     }
   }
 
+  async function handleSend() {
+    const text = input.trim()
+    if (!text || isLoading) return
+    
+    // 사용자 메시지 즉시 표시
+    setMessages((prev) => [
+        ...prev,
+        {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: text,
+        timestamp: new Date().toISOString(),
+      }, 
+    ])
+    setInput('')
+
+    const isPastMeetingQuery = /이전|지난|과거|전 회의/.test(text)
+    const hasDateRange = /\d+월\s*\d+일/.test(text)
+
+    // 이전 회의 관련 질문 && 2개 이상 && 날짜 범위 없음 -> 매번 선택 UI
+    if (pastMeetingsLoaded && pastMeetings.length >= 2 && isPastMeetingQuery && !hasDateRange) {
+      setPendingMessage(text)
+      setShowMeetingSelector(true)
+      return
+    }
+
+    await sendMessage(text, null)
+}
+
   // 회의 중일 때만 "현재 회의 요약" 찹 표시
-  const CHIPS = [                                                                                                      
+  const CHIPS = [         
     ...(meetingId ? ['지금까지 회의 요약', '담당 업무 조회'] : []),
-    '자료 검색',                                                                                                                                                                                               
-    '외부 정보 검색',                                                                                                  
-    '오늘 일정 확인',                                                                                                
+    '자료검색',
+    '외부 정보 검색',                         
+    '오늘 일정 확인',
   ]
 
   return (
@@ -242,8 +349,10 @@ export default function ChatFAB() {
                     ? (
                       // 어시스턴트 답변은 마크다운 렌더링
                       // 고지문, 근거 발화 blockquote, **볼드** 등 처리
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <div className="prose prose-sm max-w-none dark:prose-invert [&_table]:block [&_table]:overflow-x-auto [&_table]:whitespace-nowrap">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
                       </div>
                     )
                     : msg.content
@@ -251,6 +360,20 @@ export default function ChatFAB() {
                 </div>
               </div>
             ))}
+            {/* 이전 회의 선택 UI - 2개 이상일 때 메시지 보류 후 표시 */}
+            {showMeetingSelector && (
+              <MeetingSelectorCard
+                meetings={pastMeetings}
+                onConfirm={(ids) => {
+                  // ids = null → 전체, ids = [1,2] → 선택된 회의만
+                  setShowMeetingSelector(false)
+                  if (pendingMessage) {
+                    void sendMessage(pendingMessage, ids)
+                    setPendingMessage(null)
+                  }
+                }}
+              />
+            )}
 
             {/* 로딩 인디케이터 - 응답 대기 중 표시 */}
             {isLoading && (

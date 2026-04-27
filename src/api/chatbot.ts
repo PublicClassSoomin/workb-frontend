@@ -19,6 +19,17 @@ export interface HistoryResponse {
     messages: HistoryMessage[]
 }
 
+export interface PastMeeting {
+    meeting_id: number
+    title: string
+    created_at: string
+}
+
+export interface PastMeetingsResponse {
+    meetings: PastMeeting[]
+    total: number
+}
+
 // 메시지 전송
 // sessionId 없으면 서버가 새 UUID 발급 -> 응답의 session_id를 sessionStorage에 저장해야 함
 export async function sendChatMessage(
@@ -26,6 +37,7 @@ export async function sendChatMessage(
     message: string,
     meetingId: number | null,
     sessionId: string | null,
+    pastMeetingIds: number[] | null = null,
 ): Promise<SendMessageResponse> {
     const params = sessionId ? `session_id=${sessionId}` : ''
     return apiRequest<SendMessageResponse> (
@@ -35,6 +47,7 @@ export async function sendChatMessage(
             body: JSON.stringify({
                 message,
                 meeting_id: meetingId ?? undefined,
+                past_meeting_ids: pastMeetingIds ?? undefined,
             }),
         },
     )
@@ -47,5 +60,14 @@ export async function getChatHistory(
 ): Promise<HistoryResponse>{
     return apiRequest<HistoryResponse> (
         `/knowledges/workspace/${workspaceId}/chatbot/history?session_id=${sessionId}`,
+    )
+}
+
+// 이전 회의 목록 조회 - ChatFAB 열릴 때 호출해서 선택 UI에 사용
+export async function getPastMeetings(
+    workspaceId: number,
+): Promise<PastMeetingsResponse> {
+    return apiRequest<PastMeetingsResponse> (
+        `/knowledges/workspace/${workspaceId}/past_meetings`,
     )
 }
