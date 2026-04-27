@@ -13,8 +13,6 @@ import {
   PanelLeftOpen,
   FileText,
   ListTodo,
-  FileBarChart,
-  Share2,
   Search,
   Link2,
   Gauge,

@@ -178,7 +178,7 @@ export default function MiniCalendar({ meetings = [] }: { meetings?: Meeting[] }
                   const workspaceId = getCurrentWorkspaceId()
                   // 선택 날짜의 시작 시각 기준으로 이후 이벤트를 넉넉히 가져온다.
                   const timeMin = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).toISOString()
-                  const res = await getGoogleCalendarEvents(workspaceId, { time_min: timeMin, max_results: 250 })
+                  const res = await getGoogleCalendarEvents(workspaceId, timeMin, 250)
                   for (const ev of res.events ?? []) {
                     if (ev?.id && ev?.html_link) htmlLinkByEventIdRef.current.set(ev.id, ev.html_link)
                   }

@@ -9,11 +9,15 @@ import {
   disconnectIntegration,
   getSlackChannels,
   saveSlackChannel,
+  getGoogleCalendars,
+  createGoogleCalendar,
+  selectGoogleCalendar,
   type IntegrationItem,
   type ServiceName,
   type OAuthService,
   type JiraConnectBody,
   type SlackChannel,
+  type GoogleCalendarItem,
 } from '../../api/integrations'
 
 const OAUTH_SERVICES: OAuthService[] = ['google_calendar', 'slack', 'notion']
@@ -34,6 +38,10 @@ export default function IntegrationsSettingsPage() {
   const [modal, setModal] = useState<ModalState>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [googleCalendarModalOpen, setGoogleCalendarModalOpen] = useState(false)
+  const [googleCalendars, setGoogleCalendars] = useState<GoogleCalendarItem[]>([])
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [googleCalendarName, setGoogleCalendarName] = useState('')
   const [slackChannels, setSlackChannels] = useState<SlackChannel[]>([])
   const [channelLoading, setChannelLoading] = useState(false)
   const [jiraForm, setJiraForm] = useState<JiraConnectBody>({
@@ -62,6 +70,21 @@ export default function IntegrationsSettingsPage() {
     }
   }
 
+  async function openGoogleCalendarPicker() {
+    setGoogleCalendarModalOpen(true)
+    setGoogleLoading(true)
+    try {
+      const res = await getGoogleCalendars(workspaceId)
+      setGoogleCalendars(Array.isArray(res.calendars) ? res.calendars : [])
+      setError('')
+    } catch (err) {
+      setGoogleCalendars([])
+      setError(err instanceof Error ? err.message : '캘린더 목록을 불러오지 못했습니다.')
+    } finally {
+      setGoogleLoading(false)
+    }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const status = params.get('status')
@@ -71,6 +94,10 @@ export default function IntegrationsSettingsPage() {
       setSuccessMessage(`${SERVICE_META[service]?.name ?? service} 연동이 완료되었습니다!`)
       window.history.replaceState({}, '', '/settings/integrations')
       setTimeout(() => setSuccessMessage(null), 4000)
+      // Google Calendar는 OAuth 직후 캘린더 선택/생성이 필요
+      if (service === 'google_calendar') {
+        void openGoogleCalendarPicker()
+      }
     } else if (status === 'error') {
       setError('연동 중 오류가 발생했습니다. 다시 시도해주세요.')
       window.history.replaceState({}, '', '/settings/integrations')
@@ -195,6 +222,103 @@ export default function IntegrationsSettingsPage() {
               </button>
               <button onClick={handleKakaoSubmit} className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
                 <Check size={13} /> 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {googleCalendarModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
+            <h2 className="text-base font-semibold text-foreground mb-1">Google Calendar 선택</h2>
+            <p className="text-mini text-muted-foreground mb-4">
+              워크스페이스에서 사용할 캘린더를 선택하거나 새로 생성하세요.
+            </p>
+
+            <div className="mb-4">
+              <p className="text-mini text-muted-foreground mb-1.5">새 캘린더 생성</p>
+              <div className="flex gap-2">
+                <input
+                  value={googleCalendarName}
+                  onChange={(e) => setGoogleCalendarName(e.target.value)}
+                  placeholder="예: WorkB - 팀방"
+                  className="flex-1 h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <button
+                  type="button"
+                  disabled={!googleCalendarName.trim() || googleLoading}
+                  onClick={async () => {
+                    const name = googleCalendarName.trim()
+                    if (!name) return
+                    setGoogleLoading(true)
+                    try {
+                      const created = await createGoogleCalendar(workspaceId, name)
+                      await selectGoogleCalendar(workspaceId, created.calendar_id)
+                      setSuccessMessage('캘린더가 생성/선택되었습니다.')
+                      setTimeout(() => setSuccessMessage(null), 3000)
+                      setGoogleCalendarModalOpen(false)
+                      setGoogleCalendarName('')
+                      await refreshList()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : '캘린더 생성에 실패했습니다.')
+                    } finally {
+                      setGoogleLoading(false)
+                    }
+                  }}
+                  className="h-9 px-3 rounded-lg bg-accent text-accent-foreground text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/90 transition-colors"
+                >
+                  생성
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-mini text-muted-foreground mb-1.5">기존 캘린더 선택</p>
+              {googleLoading ? (
+                <p className="text-sm text-muted-foreground">불러오는 중...</p>
+              ) : googleCalendars.length === 0 ? (
+                <p className="text-sm text-muted-foreground">캘린더가 없습니다.</p>
+              ) : (
+                <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                  {googleCalendars.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={async () => {
+                        setGoogleLoading(true)
+                        try {
+                          await selectGoogleCalendar(workspaceId, c.id)
+                          setSuccessMessage('캘린더가 선택되었습니다.')
+                          setTimeout(() => setSuccessMessage(null), 3000)
+                          setGoogleCalendarModalOpen(false)
+                          await refreshList()
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : '캘린더 선택에 실패했습니다.')
+                        } finally {
+                          setGoogleLoading(false)
+                        }
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-muted/40 transition-colors"
+                    >
+                      <p className="text-sm text-foreground font-medium">
+                        {c.summary || '(제목 없음)'}
+                        {c.primary ? ' (primary)' : ''}
+                      </p>
+                      {c.id && <p className="text-mini text-muted-foreground truncate">{c.id}</p>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setGoogleCalendarModalOpen(false)}
+                className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors"
+              >
+                닫기
               </button>
             </div>
           </div>
