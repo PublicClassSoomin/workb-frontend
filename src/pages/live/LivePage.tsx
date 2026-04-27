@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Mic,
@@ -123,16 +123,30 @@ const SPEAKER_PALETTE = [
   "#ec4899",
 ];
 
-function speakerMeta(speaker: string): { label: string; color: string } {
-  const match = speaker.match(/(\d+)$/);
-  const idx = match ? parseInt(match[1], 10) : 0;
+/** 문자열을 팔레트 인덱스로 해시 */
+function hashIdx(s: string): number {
+  return [...s].reduce((acc, c) => acc + c.charCodeAt(0), 0);
+}
+
+function speakerMeta(speaker: string | number): {
+  label: string;
+  color: string;
+} {
+  const s = String(speaker ?? "").trim();
   return {
-    label: `화자 ${idx + 1}`,
-    color: SPEAKER_PALETTE[idx % SPEAKER_PALETTE.length],
+    label: s,
+    color: SPEAKER_PALETTE[hashIdx(s) % SPEAKER_PALETTE.length],
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+type PanelItem = {
+  id: string;
+  speakerColor: string;
+  speakerName: string;
+  text: string;
+};
+
 export default function LivePage() {
   const { meetingId = "2" } = useParams();
   const navigate = useNavigate();
@@ -143,7 +157,6 @@ export default function LivePage() {
     wsStatus,
     liveText,
     diarization,
-    utterances,
     errorMsg,
     micOn,
     toggleMic,
@@ -170,20 +183,15 @@ export default function LivePage() {
     Record<string, string>
   >({});
 
-  const decisions: {
-    id: string;
-    speakerColor: string;
-    speakerName: string;
-    text: string;
-  }[] = [];
-  const actions: {
-    id: string;
-    speakerColor: string;
-    speakerName: string;
-    text: string;
-  }[] = [];
-  const displaySegments =
-    wsStatus === "done" && utterances !== null ? utterances : diarization;
+  const decisions: PanelItem[] = [];
+  const actions: PanelItem[] = [];
+  const displaySegments = diarization;
+
+  // 자동 스크롤
+  const scrollBottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [displaySegments, liveText]);
 
   const elapsedSec = meeting.startAt
     ? Math.max(
@@ -203,13 +211,11 @@ export default function LivePage() {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    console.log("TODO: search", { searchQuery, searchSource });
     setSearched(true);
   }
 
   function assignSpeaker(speakerId: string, participantId: string) {
     setSpeakerAssignments((prev) => ({ ...prev, [speakerId]: participantId }));
-    console.log("TODO: assign speaker", { speakerId, participantId });
   }
 
   // ── Panel content renderers ──────────────────────────────────────────
@@ -460,7 +466,7 @@ export default function LivePage() {
               화면 공유 미리보기
             </p>
             <button
-              onClick={() => console.log("TODO: start screen share capture")}
+              onClick={() => console.log("screen share capture")}
               className="px-3 py-1.5 rounded bg-accent text-accent-foreground text-mini font-medium hover:bg-accent/90 transition-colors"
             >
               화면 공유 시작
@@ -591,7 +597,7 @@ export default function LivePage() {
             })}
           </div>
           <button
-            onClick={() => console.log("TODO: register new speaker")}
+            onClick={() => console.log("register new speaker")}
             className="flex items-center gap-1.5 w-full h-8 px-3 rounded border border-dashed border-border text-mini text-muted-foreground hover:border-accent hover:text-accent transition-colors mt-2 shrink-0"
           >
             <UserPlus size={13} /> 신규 참석자 즉시 등록
@@ -864,35 +870,28 @@ export default function LivePage() {
                 </div>
               )}
 
-              {/* 다이어라이제이션 전 실시간 텍스트 */}
-              {liveText &&
-                displaySegments.length === 0 &&
-                wsStatus === "connected" && (
-                  <div className="p-3 rounded-lg bg-card border border-border">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Mic size={13} className="text-accent" />
-                      <span className="text-mini text-muted-foreground">
-                        인식 중...
-                      </span>
-                    </div>
-                    <p className="text-sm text-foreground">{liveText}</p>
+              {/* 빈 상태 */}
+              {displaySegments.length === 0 &&
+                wsStatus === "connected" &&
+                !liveText && (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+                    <Mic size={24} className="text-muted-foreground/30" />
+                    <p className="text-mini text-muted-foreground">
+                      발화가 감지되면 여기에 표시됩니다.
+                    </p>
                   </div>
                 )}
 
               {/* 화자 분리 말풍선 (실시간 diarization 또는 최종 utterances) */}
               {displaySegments.map((seg) => {
                 const { label, color } = speakerMeta(seg.speaker);
-                const mins = String(Math.floor(seg.start / 60)).padStart(
-                  2,
-                  "0",
-                );
-                const secs = String(Math.floor(seg.start % 60)).padStart(
-                  2,
-                  "0",
-                );
+                const ts = new Date(seg.timestamp);
+                const timeLabel = isNaN(ts.getTime())
+                  ? seg.timestamp
+                  : `${String(ts.getHours()).padStart(2, "0")}:${String(ts.getMinutes()).padStart(2, "0")}`;
                 return (
                   <div
-                    key={`${seg.speaker}-${seg.start}`}
+                    key={`${seg.speaker_id}-${seg.timestamp}`}
                     className="flex gap-3 p-3 rounded-lg bg-card border border-border"
                   >
                     <div
@@ -907,63 +906,75 @@ export default function LivePage() {
                           {label}
                         </span>
                         <span className="text-mini text-muted-foreground">
-                          {mins}:{secs}
+                          {timeLabel}
                         </span>
                       </div>
-                      <p className="text-sm text-foreground">{seg.text}</p>
+                      <p className="text-sm text-foreground">{seg.content}</p>
                     </div>
                   </div>
                 );
               })}
 
-              {/* 빈 상태 */}
-              {displaySegments.length === 0 &&
-                wsStatus === "connected" &&
-                !liveText && (
-                  <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
-                    <Mic size={24} className="text-muted-foreground/30" />
-                    <p className="text-mini text-muted-foreground">
-                      발화가 감지되면 여기에 표시됩니다.
-                    </p>
-                  </div>
-                )}
-
-              {/* 라이브 커서 */}
-              {(wsStatus === "connected" || wsStatus === "finalizing") && (
+              {/* 라이브 텍스트 (항상 맨 아래) — diarization 이전 partial 텍스트 */}
+              {liveText && wsStatus === "connected" && (
                 <div className="flex gap-3 p-3 rounded-lg bg-card border border-border">
-                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center shrink-0 mt-0.5">
                     <Mic size={14} className="text-accent animate-pulse" />
                   </div>
-                  <div className="flex-1 flex items-center gap-1">
-                    {wsStatus === "finalizing" ? (
-                      <>
-                        <span className="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin mr-1" />
-                        <span className="text-mini text-muted-foreground">
-                          오프라인 파이프라인 실행 중...
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className="w-2 h-2 rounded-full bg-accent animate-bounce"
-                          style={{ animationDelay: "0ms" }}
-                        />
-                        <span
-                          className="w-2 h-2 rounded-full bg-accent animate-bounce"
-                          style={{ animationDelay: "150ms" }}
-                        />
-                        <span
-                          className="w-2 h-2 rounded-full bg-accent animate-bounce"
-                          style={{ animationDelay: "300ms" }}
-                        />
-                        <span className="text-mini text-muted-foreground ml-1">
-                          인식 중...
-                        </span>
-                      </>
-                    )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-foreground">
+                        인식 중
+                      </span>
+                    </div>
+                    <p className="text-sm text-foreground">
+                      {liveText}
+                      <span className="inline-block w-0.5 h-4 bg-accent align-text-bottom ml-0.5 animate-pulse" />
+                    </p>
                   </div>
                 </div>
               )}
+
+              {/* 라이브 커서 (liveText 없을 때만) */}
+              {(wsStatus === "connected" || wsStatus === "finalizing") &&
+                !liveText && (
+                  <div className="flex gap-3 p-3 rounded-lg bg-card border border-border">
+                    <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center shrink-0">
+                      <Mic size={14} className="text-accent animate-pulse" />
+                    </div>
+                    <div className="flex-1 flex items-center gap-1">
+                      {wsStatus === "finalizing" ? (
+                        <>
+                          <span className="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin mr-1" />
+                          <span className="text-mini text-muted-foreground">
+                            오프라인 파이프라인 실행 중...
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className="w-2 h-2 rounded-full bg-accent animate-bounce"
+                            style={{ animationDelay: "0ms" }}
+                          />
+                          <span
+                            className="w-2 h-2 rounded-full bg-accent animate-bounce"
+                            style={{ animationDelay: "150ms" }}
+                          />
+                          <span
+                            className="w-2 h-2 rounded-full bg-accent animate-bounce"
+                            style={{ animationDelay: "300ms" }}
+                          />
+                          <span className="text-mini text-muted-foreground ml-1">
+                            인식 중...
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {/* 자동 스크롤 앵커 */}
+              <div ref={scrollBottomRef} />
             </div>
           </div>
 
