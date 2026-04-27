@@ -159,14 +159,23 @@ export function useLiveSTT(meetingId: string) {
       ws.onmessage = (e) => {
         if (unmounted) return;
         try {
-          const msg = JSON.parse(e.data as string) as STTMessage;
+          const msg = JSON.parse(e.data as string) as STTMessage & {
+            message?: string;
+            meeting_id?: string;
+          };
+          // 오프라인 처리 완료 신호
+          if (msg.message === "Meeting processing complete") {
+            isDoneRef.current = true;
+            setWsStatus("done");
+            return;
+          }
           setLiveText(msg.text ?? "");
           if (msg.diarization && msg.diarization.length > 0) {
             setDiarization(msg.diarization);
           }
           if (msg.final) {
             isDoneRef.current = true;
-            setWsStatus("done");
+            setWsStatus("finalizing");
           }
         } catch {
           console.error("STT 메시지 파싱 오류:", e.data);

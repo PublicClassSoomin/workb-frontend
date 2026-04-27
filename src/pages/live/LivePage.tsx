@@ -193,6 +193,13 @@ export default function LivePage() {
     scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displaySegments, liveText]);
 
+  // 처리 완료 시 회의록 화면으로 자동 이동
+  useEffect(() => {
+    if (wsStatus === "done") {
+      navigate(`/meetings/${meetingId}/notes`);
+    }
+  }, [wsStatus, meetingId, navigate]);
+
   const elapsedSec = meeting.startAt
     ? Math.max(
         0,
