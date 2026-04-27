@@ -102,6 +102,13 @@ export interface GoogleCalendarEvent {
   html_link?: string | null
 }
 
+export interface GoogleCalendarItem {
+  id: string
+  summary: string
+  primary?: boolean
+  access_role?: string | null
+}
+
 export function getGoogleCalendarEvents(
   workspaceId: number,
   timeMin?: string,
@@ -110,4 +117,26 @@ export function getGoogleCalendarEvents(
   const params = new URLSearchParams({ workspace_id: String(workspaceId), max_results: String(maxResults) })
   if (timeMin) params.append('time_min', timeMin)
   return apiFetch<{ events: GoogleCalendarEvent[] }>(`/integrations/google/events?${params}`)
+}
+
+// --- Google Calendar calendars (list/create/select) ---
+export function getGoogleCalendars(workspaceId: number) {
+  const params = new URLSearchParams({ workspace_id: String(workspaceId) })
+  return apiFetch<{ calendars: GoogleCalendarItem[] }>(`/integrations/google/calendars?${params}`)
+}
+
+export function createGoogleCalendar(workspaceId: number, name: string) {
+  const params = new URLSearchParams({ workspace_id: String(workspaceId) })
+  return apiFetch<{ calendar_id: string; summary: string }>(`/integrations/google/calendars?${params}`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function selectGoogleCalendar(workspaceId: number, calendarId: string) {
+  const params = new URLSearchParams({ workspace_id: String(workspaceId) })
+  return apiFetch<IntegrationItem>(`/integrations/google/calendars/select?${params}`, {
+    method: 'POST',
+    body: JSON.stringify({ calendar_id: calendarId }),
+  })
 }
