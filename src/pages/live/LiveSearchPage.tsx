@@ -8,21 +8,21 @@ type Source = 'all' | 'web' | 'db' | 'history'
 const MOCK_RESULTS = [
   {
     id: 'r1',
-    source: 'web' as Source,
+    source: 'internet' as Source,
     title: 'Redis Streams 공식 문서',
     snippet: 'Redis Streams는 append-only log 자료구조로 실시간 데이터 처리에 최적화...',
     url: 'https://redis.io/docs/data-types/streams/',
   },
   {
     id: 'r2',
-    source: 'db' as Source,
+    source: 'internal_db' as Source,
     title: '[내부] STT API 설계 문서 v2',
     snippet: '화자 분리 모델 연동 스펙 및 Redis 저장 포맷 정의. 컬럼: 화자 ID / 발언 시각 / 발언 내용',
     url: '',
   },
   {
     id: 'r3',
-    source: 'history' as Source,
+    source: 'past_meeting' as Source,
     title: '스프린트 플래닝 #12 — Redis 스키마 논의',
     snippet: 'STT 전문을 Redis Streams에 저장하는 방식으로 결정. 보존 기간 7일 설정.',
     url: '',
