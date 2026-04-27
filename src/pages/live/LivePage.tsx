@@ -7,6 +7,8 @@ import {
   Sparkles, FileText, BarChart2,
   CheckCircle, AlertCircle, UserPlus, X,
 } from 'lucide-react'
+import LiveScreenPage from '../../pages/live/LiveScreenPage'
+
 import clsx from 'clsx'
 import { LIVE_TRANSCRIPT } from '../../data/mockTranscript'
 import { MEETINGS, PARTICIPANTS } from '../../data/mockData'
@@ -40,26 +42,6 @@ const MOCK_RESULTS = [
     source: 'history' as const,
     title: '스프린트 플래닝 #12 — Redis 스키마 논의',
     snippet: 'STT 전문을 Redis Streams에 저장하는 방식으로 결정. 보존 기간 7일 설정.',
-  },
-]
-
-// ── Screen mock data ──────────────────────────────────────────────────────
-const MOCK_ANALYSIS = [
-  {
-    id: 's1',
-    type: 'slide' as const,
-    timestamp: '00:05:20',
-    title: '슬라이드 3: Q1 KPI 달성 현황',
-    extracted: 'DAU 목표: 50,000 / 달성: 56,000 (+12%)\n전환율 목표: 8% / 달성: 5% (-3%p)',
-    linked: 'Q1 회고 안건과 연결됨',
-  },
-  {
-    id: 's2',
-    type: 'chart' as const,
-    timestamp: '00:12:45',
-    title: '차트: 주간 활성 사용자 추이',
-    extracted: '3월 4주 피크, 이후 완만한 하락.',
-    linked: 'Q2 목표 설정 안건과 연결됨',
   },
 ]
 
@@ -284,43 +266,8 @@ export default function LivePage() {
               <X size={15} />
             </button>
           </div>
-          <div className="rounded-lg border-2 border-dashed border-border bg-muted/20 aspect-video flex flex-col items-center justify-center mb-3 gap-1.5 shrink-0">
-            <Monitor size={24} className="text-muted-foreground/30" />
-            <p className="text-mini text-muted-foreground">화면 공유 미리보기</p>
-            <button
-              onClick={() => console.log('TODO: start screen share capture')}
-              className="px-3 py-1.5 rounded bg-accent text-accent-foreground text-mini font-medium hover:bg-accent/90 transition-colors"
-            >
-              화면 공유 시작
-            </button>
-          </div>
-          <div className="flex items-center gap-1.5 mb-2 shrink-0">
-            <Sparkles size={12} className="text-accent" />
-            <span className="text-mini font-medium text-foreground">AI 분석 결과</span>
-            <span className="text-micro text-muted-foreground">{MOCK_ANALYSIS.length}개 감지됨</span>
-          </div>
-          <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-            {MOCK_ANALYSIS.map((item) => (
-              <div key={item.id} className="p-2.5 rounded-lg border border-border bg-background">
-                <div className="flex items-start gap-2 mb-1.5">
-                  <div className="w-6 h-6 rounded bg-accent-subtle flex items-center justify-center shrink-0">
-                    {item.type === 'chart' ? <BarChart2 size={12} className="text-accent" /> : <FileText size={12} className="text-accent" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="text-mini font-medium text-foreground truncate">{item.title}</p>
-                      <span className="text-micro text-muted-foreground shrink-0">{item.timestamp}</span>
-                    </div>
-                    <p className="text-micro text-muted-foreground mt-0.5 whitespace-pre-line">{item.extracted}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 pt-1.5 border-t border-border">
-                  <Sparkles size={10} className="text-accent" />
-                  <span className="text-micro text-accent">{item.linked}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* compact=true: 패널 안에 맞는 작은 사이즈 */}                                                         
+          <LiveScreenPage meetingId={Number(meetingId)} compact />                                               
         </div>
       )
     }
