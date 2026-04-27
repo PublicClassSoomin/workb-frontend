@@ -161,14 +161,16 @@ export function useLiveSTT(meetingId: string) {
         try {
           const msg = JSON.parse(e.data as string) as STTMessage & {
             message?: string;
-            meeting_id?: string;
           };
-          // 오프라인 처리 완료 신호
+
+          // 회의 처리 완료 신호
           if (msg.message === "Meeting processing complete") {
             isDoneRef.current = true;
             setWsStatus("done");
+            ws.close(1000);
             return;
           }
+
           setLiveText(msg.text ?? "");
           if (msg.diarization && msg.diarization.length > 0) {
             setDiarization(msg.diarization);
