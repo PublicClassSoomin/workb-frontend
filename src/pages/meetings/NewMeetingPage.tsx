@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Users, Tag, Search, X, UsersRound } from 'lucide-react'
-import { fetchWorkspaceMembers } from '../../api/workspaceMembers'
 import type { Meeting, Participant } from '../../types/meeting'
-import { DEPARTMENTS } from '../../data/mockData'
 import DatePicker from '../../components/ui/DatePicker'
 import TimePicker from '../../components/ui/TimePicker'
 import { getCurrentWorkspaceId, WORKSPACE_CHANGED_EVENT } from '../../utils/workspace'
-import { getApiV1BaseUrl } from '../../api/baseUrl'
+import { apiRequest } from '../../api/client'
+import { getDepartments, getWorkspaceMembers, type Department as WorkspaceDepartment } from '../../api/workspace'
+import { getIntegrations, type IntegrationItem } from '../../api/integrations'
 
 const MEETING_TYPES = ['일반 회의', '스프린트 플래닝', '스탠드업', '회고', '브레인스토밍', '투자자 미팅']
 
@@ -29,6 +29,7 @@ export default function NewMeetingPage() {
   const [meetingType, setMeetingType] = useState('')
   const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([])
   const [allParticipants, setAllParticipants] = useState<Participant[]>([])
+  const [departments, setDepartments] = useState<WorkspaceDepartment[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -38,7 +39,11 @@ export default function NewMeetingPage() {
   const location = useLocation()
   const processedDraftKeyRef = useRef<string | null>(null)
   const editMeetingIdRef = useRef<string | null>(null)
+  const syncTouchedRef = useRef(false)
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId())
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false)
+  const [editHasGoogleEvent, setEditHasGoogleEvent] = useState<boolean | null>(null)
 
   function todayYmd() {
     const d = new Date()
@@ -58,11 +63,13 @@ export default function NewMeetingPage() {
 
   useEffect(() => {
     let mounted = true
-    fetchWorkspaceMembers(workspaceId)
-      .then((rows) => {
+    Promise.all([getWorkspaceMembers(workspaceId), getDepartments(workspaceId)])
+      .then(([memberRows, departmentRows]) => {
         if (!mounted) return
+        setDepartments(Array.isArray(departmentRows) ? departmentRows : [])
+
         const palette = ['#6b78f6', '#22c55e', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#8b5cf6', '#64748b']
-        const ui: Participant[] = rows.map((r) => {
+        const ui: Participant[] = (Array.isArray(memberRows) ? memberRows : []).map((r) => {
           const initials = r.name.length >= 2 ? r.name.slice(0, 2) : r.name.length === 1 ? r.name : '?'
           return {
             id: `u${r.user_id}`,
@@ -70,6 +77,7 @@ export default function NewMeetingPage() {
             name: r.name,
             avatarInitials: initials,
             color: palette[Math.abs(r.user_id) % palette.length],
+            // 부서는 "멤버·권한 관리"에서 지정된 department만 내려옴 (없으면 null)
             department: r.department ?? undefined,
           }
         })
@@ -77,7 +85,34 @@ export default function NewMeetingPage() {
       })
       .catch(() => {
         if (!mounted) return
+        setDepartments([])
         setAllParticipants([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    let mounted = true
+    getIntegrations(workspaceId)
+      .then((res) => {
+        if (!mounted) return
+        const items: IntegrationItem[] = Array.isArray(res.integrations) ? res.integrations : []
+        const google = items.find((x) => x.service === 'google_calendar')
+        const connected = Boolean(google?.is_connected)
+        setGoogleConnected(connected)
+        // 기본값: 연동돼 있으면 자동 등록 ON
+        if (!connected) {
+          setSyncGoogleCalendar(false)
+        } else if (!editMeetingIdRef.current && !syncTouchedRef.current) {
+          setSyncGoogleCalendar(true)
+        }
+      })
+      .catch(() => {
+        if (!mounted) return
+        setGoogleConnected(false)
+        setSyncGoogleCalendar(false)
       })
     return () => {
       mounted = false
@@ -105,8 +140,8 @@ export default function NewMeetingPage() {
         (p.department?.toLowerCase().includes(trimmed) ?? false))
   )
 
-  // 부서 선택 UX는 고정 목록(목업) 유지: 데이터만 DB 연결
-  const matchedDepartments = DEPARTMENTS.filter(
+  // 부서 선택 UX: "부서 관리"에서 생성된 부서만 노출
+  const matchedDepartments = departments.filter(
     (d) => trimmed === '' || d.name.toLowerCase().includes(trimmed),
   )
 
@@ -123,6 +158,8 @@ export default function NewMeetingPage() {
     if (!draft) {
       processedDraftKeyRef.current = null
       editMeetingIdRef.current = null
+      syncTouchedRef.current = false
+      setEditHasGoogleEvent(null)
       return
     }
     const dedupeKey = `${location.key}|${draft.id}|${draft.startAt}`
@@ -138,7 +175,17 @@ export default function NewMeetingPage() {
     setSelectedParticipants(
       draft.participants?.length ? draft.participants.map((p) => ({ ...p })) : [],
     )
+    syncTouchedRef.current = false
+    setEditHasGoogleEvent(Boolean(draft.googleCalendarEventId))
   }, [location.key, location.state])
+
+  // 수정 화면: draft 로딩 + googleConnected 로딩이 끝난 뒤에도 기본 체크 상태를 동기화
+  useEffect(() => {
+    if (!editMeetingIdRef.current) return
+    if (editHasGoogleEvent === null) return
+    if (syncTouchedRef.current) return
+    setSyncGoogleCalendar(Boolean(editHasGoogleEvent) || googleConnected)
+  }, [googleConnected, editHasGoogleEvent])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -216,11 +263,6 @@ export default function NewMeetingPage() {
       return
     }
 
-    const token =
-      localStorage.getItem('access_token') ||
-      localStorage.getItem('token') ||
-      localStorage.getItem('authToken')
-
     // 참석자 저장은 반드시 DB의 users.id (= userId)만 사용
     const participant_ids = selectedParticipants
       .map((p) => p.userId)
@@ -236,28 +278,25 @@ export default function NewMeetingPage() {
       meeting_type: meetingType || '일반 회의',
       scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
       participant_ids,
-      sync_google_calendar: false,
+      sync_google_calendar: syncGoogleCalendar,
+      duration_minutes: Number(duration) || 60,
     }
 
     const workspaceId = getCurrentWorkspaceId()
     const editId = editMeetingIdRef.current
-    const url = editId
-      ? `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/${editId}`
-      : `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}`
 
-    const res = await fetch(url, {
-      method: editId ? 'PATCH' : 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      alert(`${editId ? '회의 수정' : '회의 생성'} 실패 (${res.status})\n${text}`)
+    try {
+      await apiRequest(
+        editId
+          ? `/meetings/workspaces/${workspaceId}/${editId}`
+          : `/meetings/workspaces/${workspaceId}`,
+        {
+          method: editId ? 'PATCH' : 'POST',
+          body: JSON.stringify(body),
+        },
+      )
+    } catch (err) {
+      alert(`${editId ? '회의 수정' : '회의 생성'} 실패\n${err instanceof Error ? err.message : String(err)}`)
       return
     }
 
@@ -446,7 +485,7 @@ export default function NewMeetingPage() {
                       const isHighlighted = idx === highlightedIndex
                       return (
                         <button
-                          key={dept.id}
+                          key={dept.department_id}
                           type="button"
                           role="option"
                           aria-selected={isHighlighted}
@@ -535,20 +574,42 @@ export default function NewMeetingPage() {
         </div>
 
         {/* Google Calendar 연동 */}
-        <div className="p-3 rounded-lg border border-border bg-muted/20">
+        <div className="p-3 rounded-lg border border-border bg-muted/20 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-foreground">📅 Google Calendar 연동</p>
               <p className="text-mini text-muted-foreground mt-0.5">회의 일정을 캘린더에 자동 등록합니다.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => console.log('TODO: Google Calendar sync')}
-              className="px-3 py-1.5 rounded-lg border border-accent text-accent text-mini font-medium hover:bg-accent-subtle transition-colors"
+            <span
+              className={`px-2 py-0.5 rounded-full text-micro font-medium ${
+                googleConnected
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-muted text-muted-foreground'
+              }`}
             >
-              캘린더 연동
-            </button>
+              {googleConnected ? '연동됨' : '연동 안됨'}
+            </span>
           </div>
+
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground">이 회의를 Google Calendar에 등록</span>
+            <input
+              type="checkbox"
+              checked={syncGoogleCalendar}
+              onChange={(e) => {
+                syncTouchedRef.current = true
+                setSyncGoogleCalendar(e.target.checked)
+              }}
+              disabled={!googleConnected}
+              aria-label="Google Calendar 자동 등록"
+            />
+          </label>
+
+          {!googleConnected && (
+            <p className="text-mini text-muted-foreground">
+              먼저 <span className="font-medium">설정 → 연동 관리</span>에서 Google Calendar를 연결해 주세요.
+            </p>
+          )}
         </div>
 
         <div className="flex gap-3 pt-2">

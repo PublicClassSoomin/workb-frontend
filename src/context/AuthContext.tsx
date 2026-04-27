@@ -61,8 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (refreshToken) {
       await requestLogout(refreshToken).catch(() => undefined)
-    } else {
-      clearAuthTokens()
     }
 
     clearAuthTokens()

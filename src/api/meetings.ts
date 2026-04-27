@@ -1,22 +1,33 @@
 import type { Meeting } from '../types/meeting'
-import { getApiV1BaseUrl } from './baseUrl'
+import { apiRequest } from './client'
 import { mapApiMeetingItemToMeeting, type BackendMeetingItem } from './dashboard'
-
-function authHeaders(): HeadersInit {
-  const token =
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('token') ||
-    localStorage.getItem('authToken')
-  return {
-    Accept: 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
-}
 
 interface MeetingDetailResponseBody {
   success: boolean
   data: BackendMeetingItem
   message?: string
+}
+
+interface MeetingSearchItem {
+  meeting_id: number
+  title: string
+  scheduled_at?: string | null
+  participants?: { user_id: number; name: string }[]
+  summary?: string | null
+}
+
+interface MeetingSearchResponseBody {
+  success: boolean
+  data: { meetings: MeetingSearchItem[] }
+  message?: string
+}
+
+function toDateParam(d: Date): string {
+  // backend expects YYYY-MM-DD
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 /**
@@ -27,17 +38,38 @@ export async function fetchWorkspaceMeetingDetail(
   workspaceId: number,
   meetingId: number,
 ): Promise<Meeting> {
-  const res = await fetch(
-    `${getApiV1BaseUrl()}/meetings/workspaces/${workspaceId}/${meetingId}`,
-    { headers: authHeaders() },
+  const body = await apiRequest<MeetingDetailResponseBody>(
+    `/meetings/workspaces/${workspaceId}/${meetingId}`,
   )
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Meeting detail API failed (${res.status}): ${text}`)
-  }
-  const body = (await res.json()) as MeetingDetailResponseBody
   if (!body.data) {
     throw new Error('Meeting detail API: empty data')
   }
   return mapApiMeetingItemToMeeting(body.data)
+}
+
+/**
+ * GET /api/v1/knowledges/workspaces/{workspaceId}/meetings/search
+ * 캘린더용: 워크스페이스 회의를 기간으로 조회.
+ */
+export async function fetchWorkspaceMeetingsByDateRange(
+  workspaceId: number,
+  from: Date,
+  to: Date,
+): Promise<MeetingSearchItem[]> {
+  const qs = new URLSearchParams({
+    from_date: toDateParam(from),
+    to_date: toDateParam(to),
+  })
+  const body = await apiRequest<MeetingSearchResponseBody>(
+    `/knowledges/workspaces/${workspaceId}/meetings/search?${qs.toString()}`,
+  )
+  return body.data?.meetings ?? []
+}
+
+export async function startWorkspaceMeeting(workspaceId: number, meetingId: number): Promise<void> {
+  await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/start`, { method: 'POST' })
+}
+
+export async function endWorkspaceMeeting(workspaceId: number, meetingId: number): Promise<void> {
+  await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/end`, { method: 'POST' })
 }

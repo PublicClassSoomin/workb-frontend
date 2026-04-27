@@ -14,7 +14,10 @@ export function formatRelativeTime(iso: string): string {
 export function formatTime(iso: string): string {
   const date = new Date(iso)
   const now = new Date()
-  const diffDays = Math.floor((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  // "오늘/내일" 판단은 시간 차이가 아니라 '로컬 날짜' 차이로 계산해야 자정 근처에서 틀어지지 않음
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const nowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const diffDays = Math.round((dayStart - nowStart) / (1000 * 60 * 60 * 24))
 
   const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 

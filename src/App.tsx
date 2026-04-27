@@ -31,6 +31,7 @@ import NotesEditPage from './pages/meetings/NotesEditPage'
 import WbsPage from './pages/meetings/WbsPage'
 import ReportsPage from './pages/meetings/ReportsPage'
 import ExportPage from './pages/meetings/ExportPage'
+import MeetingSelectPage from './pages/meetings/MeetingSelectPage'
 import UpcomingMeetingPage from './pages/meetings/UpcomingMeetingPage'
 
 // Live pages
@@ -43,6 +44,8 @@ import DepartmentsSettingsPage from './pages/settings/DepartmentsSettingsPage'
 import VoiceSettingsPage from './pages/settings/VoiceSettingsPage'
 import IntegrationsSettingsPage from './pages/settings/IntegrationsSettingsPage'
 import DeviceSettingsPage from './pages/settings/DeviceSettingsPage'
+import PasswordSettingsPage from './pages/settings/PasswordSettingsPage'
+import MyPage from './pages/settings/MyPage'
 
 export default function App() {
   return (
@@ -101,6 +104,7 @@ export default function App() {
           <Route path="meetings/:meetingId/upcoming" element={<UpcomingMeetingPage />} />
 
           {/* 회의: 사후 */}
+          <Route path="meetings/post" element={<MeetingSelectPage />} />
           <Route path="meetings/:meetingId/notes" element={<NotesPage />} />
           <Route path="meetings/:meetingId/notes/edit" element={<NotesEditPage />} />
           <Route path="meetings/:meetingId/wbs" element={<WbsPage />} />
@@ -108,14 +112,17 @@ export default function App() {
           <Route path="meetings/:meetingId/export" element={<ExportPage />} />
 
           {/* 설정 */}
+          <Route path="settings" element={<Navigate to="/settings/my" replace />} />
+          <Route path="settings/my" element={<MyPage />} />
+          <Route path="settings/password" element={<PasswordSettingsPage />} />
           <Route element={<RequireAdminRoute />}>
             <Route path="settings/workspace" element={<WorkspaceSettingsPage />} />
             <Route path="settings/members" element={<MembersSettingsPage />} />
             <Route path="settings/departments" element={<DepartmentsSettingsPage />} />
             <Route path="settings/integrations" element={<IntegrationsSettingsPage />} />
+            <Route path="settings/device" element={<DeviceSettingsPage />} />
           </Route>
           <Route path="settings/voice" element={<VoiceSettingsPage />} />
-          <Route path="settings/device" element={<DeviceSettingsPage />} />
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/" replace />} />

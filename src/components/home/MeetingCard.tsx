@@ -68,8 +68,8 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
         {meeting.title}
       </h3>
 
-      {/* 예정·진행 중: 회의실 · 유형 · 참석 직원 (텍스트로 명시) */}
-      {(meeting.status === 'upcoming' || meeting.status === 'inprogress') &&
+      {/* 유형 · 참석 직원 (텍스트로 명시) */}
+      {(meeting.status === 'upcoming' || meeting.status === 'inprogress' || meeting.status === 'completed') &&
         (meeting.meetingType || meeting.participants.length > 0) && (
           <div className="flex flex-col gap-1.5 text-mini text-muted-foreground">
             {meeting.meetingType && (

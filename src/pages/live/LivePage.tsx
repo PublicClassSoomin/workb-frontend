@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Mic, MicOff, Camera, CameraOff, Square,
   Search, Monitor, Users, MessageSquare, CheckSquare, Zap,
@@ -10,6 +10,10 @@ import {
 import clsx from 'clsx'
 import { LIVE_TRANSCRIPT } from '../../data/mockTranscript'
 import { MEETINGS, PARTICIPANTS } from '../../data/mockData'
+import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
+import type { Meeting } from '../../types/meeting'
+import { endWorkspaceMeeting } from '../../api/meetings'
+import { getCurrentWorkspaceId } from '../../utils/workspace'
 
 // ── Panel types ───────────────────────────────────────────────────────────
 type MainPanel = 'decisions' | 'actions' | 'chat'
@@ -71,7 +75,10 @@ const MOCK_SPEAKERS = [
 export default function LivePage() {
   const { meetingId = '2' } = useParams()
   const navigate = useNavigate()
-  const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[0]
+  const location = useLocation()
+  const stateMeeting = (location.state as { meeting?: Meeting } | null)?.meeting
+  const snap = readMeetingSnapshotForRoute(meetingId)
+  const meeting = stateMeeting ?? snap ?? (MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[0])
 
   // Controls
   const [micOn, setMicOn] = useState(true)
@@ -458,7 +465,19 @@ export default function LivePage() {
             </button>
             <button
               onClick={() => {
-                console.log('TODO: end meeting, trigger notes/WBS generation')
+                // 회의 종료 → 상태를 done으로 전환한 뒤 회의록으로 이동
+                const wsid = getCurrentWorkspaceId()
+                const numericId = Number(meetingId)
+                if (Number.isFinite(numericId) && numericId > 0) {
+                  endWorkspaceMeeting(wsid, numericId)
+                    .catch(() => {
+                      // 실패해도 회의록 화면으로 이동은 허용
+                    })
+                    .finally(() => {
+                      navigate(`/meetings/${meetingId}/notes`)
+                    })
+                  return
+                }
                 navigate(`/meetings/${meetingId}/notes`)
               }}
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-red-500 text-white text-mini font-medium hover:bg-red-600 transition-colors"

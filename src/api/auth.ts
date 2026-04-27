@@ -30,6 +30,7 @@ export interface AdminSignupResponse {
   role: 'admin'
   workspace_id: number
   invite_code: string
+  welcome_email_sent?: boolean
 }
 
 export interface MemberSignupPayload {
@@ -46,6 +47,40 @@ export interface UserResponse {
   role: 'admin' | 'member' | 'viewer'
 }
 
+export interface UserProfileResponse extends UserResponse {
+  workspace_id: number | null
+}
+
+export interface UserProfileUpdatePayload {
+  name: string
+}
+
+interface UserProfileUpdateResponse {
+  user: UserProfileResponse
+  access_token: string
+  refresh_token: string
+  token_type: string
+  message: string
+}
+
+interface MessageResponse {
+  message: string
+}
+
+export interface ChangePasswordPayload {
+  current_password: string
+  new_password: string
+}
+
+export interface RequestPasswordResetPayload {
+  email: string
+}
+
+export interface ConfirmPasswordResetPayload {
+  token: string
+  new_password: string
+}
+
 export function signupAdmin(payload: AdminSignupPayload): Promise<AdminSignupResponse> {
   return apiRequest<AdminSignupResponse>('/users/signup/admin', {
     method: 'POST',
@@ -57,6 +92,49 @@ export function signupMember(payload: MemberSignupPayload): Promise<UserResponse
   return apiRequest<UserResponse>('/users/signup/member', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+export function changePassword(payload: ChangePasswordPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-change', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function requestPasswordReset(payload: RequestPasswordResetPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-reset', {
+    method: 'POST',
+    skipAuthRefresh: true,
+    body: JSON.stringify(payload),
+  })
+}
+
+export function confirmPasswordReset(payload: ConfirmPasswordResetPayload): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/password-reset/confirm', {
+    method: 'POST',
+    skipAuthRefresh: true,
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getMyProfile(): Promise<UserProfileResponse> {
+  return apiRequest<UserProfileResponse>('/users/me')
+}
+
+export async function updateMyProfile(payload: UserProfileUpdatePayload): Promise<UserProfileUpdateResponse> {
+  const response = await apiRequest<UserProfileUpdateResponse>('/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+  setAuthTokens(response.access_token, response.refresh_token)
+  syncStoredUserFromToken(response.user)
+  return response
+}
+
+export async function withdrawMyAccount(): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>('/users/me', {
+    method: 'DELETE',
   })
 }
 
