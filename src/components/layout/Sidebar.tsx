@@ -316,7 +316,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "회의 후",
     items: [
       { to: "/meetings/post", label: "회의록 · 보고서", icon: FileText },
-      { to: "/meetings/3/wbs", label: "WBS · 태스크", icon: ListTodo },
+      { to: "/meetings/wbs-select", label: "WBS · 태스크", icon: ListTodo },
     ],
   },
   {
