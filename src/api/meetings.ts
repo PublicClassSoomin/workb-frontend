@@ -74,6 +74,35 @@ export async function endWorkspaceMeeting(workspaceId: number, meetingId: number
   await apiRequest(`/meetings/workspaces/${workspaceId}/${meetingId}/end`, { method: 'POST' })
 }
 
+export interface MinutePhoto {
+  id: number
+  minute_id: number
+  photo_url: string
+  taken_at: string
+  taken_by: number
+}
+
+interface MinutePhotoUploadResponseBody {
+  success: boolean
+  photo: MinutePhoto
+  message?: string
+}
+
+export async function uploadMinutePhoto(
+  workspaceId: number,
+  meetingId: number,
+  imageBlob: Blob,
+): Promise<MinutePhoto> {
+  const form = new FormData()
+  form.append('file', imageBlob, 'capture.png')
+  const body = await apiRequest<MinutePhotoUploadResponseBody>(
+    `/meetings/workspaces/${workspaceId}/${meetingId}/minute-photos`,
+    { method: 'POST', body: form },
+  )
+  if (!body.photo) throw new Error('Minute photo upload failed: empty response')
+  return body.photo
+}
+
 export interface MeetingHistoryItem {
   id: number
   title: string

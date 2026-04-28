@@ -23,6 +23,7 @@ function localDateTimeParts(iso: string): { date: string; time: string } {
 
 export default function NewMeetingPage() {
   const [title, setTitle] = useState('')
+  const [roomName, setRoomName] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [duration, setDuration] = useState('60')
@@ -132,8 +133,9 @@ export default function NewMeetingPage() {
   }, [])
 
   // 매칭된 개별 직원 (이름 또는 부서명으로 검색)
-  const hasDepartments =
-    departments.length > 0 && allParticipants.some((p) => Boolean(p.department))
+  // 부서 목록은 "부서 관리"에 등록된 것 기준으로 노출해야 함.
+  // 멤버에게 부서가 1명도 지정되지 않았더라도, 등록된 부서는 드롭다운에 보여줘야 한다.
+  const hasDepartments = departments.length > 0
 
   const filteredCandidates = allParticipants.filter(
     (p) =>
@@ -171,6 +173,7 @@ export default function NewMeetingPage() {
 
     setTitle(draft.title)
     setMeetingType(draft.meetingType ?? '')
+    setRoomName(draft.roomName ?? '')
     editMeetingIdRef.current = draft.id
     const { date: dStr, time: tStr } = localDateTimeParts(draft.startAt)
     setDate(dStr)
@@ -279,6 +282,7 @@ export default function NewMeetingPage() {
     const body = {
       title,
       meeting_type: meetingType || '일반 회의',
+      room_name: roomName.trim() || '미지정',
       scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
       participant_ids,
       sync_google_calendar: syncGoogleCalendar,
@@ -328,6 +332,21 @@ export default function NewMeetingPage() {
             className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
             required
           />
+        </div>
+
+        {/* 회의룸 */}
+        <div>
+          <label className="text-sm font-medium text-foreground mb-1.5 block">회의룸 (회의실)</label>
+          <input
+            type="text"
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value)}
+            placeholder="예: 회의실 A / Zoom / Google Meet"
+            className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          />
+          <p className="text-mini text-muted-foreground mt-1">
+            비워두면 <span className="font-medium">미지정</span>으로 저장됩니다.
+          </p>
         </div>
 
         {/* 날짜 & 시간 */}
@@ -486,18 +505,25 @@ export default function NewMeetingPage() {
                       ).length
                       const newCount = membersInDept.length - alreadyAdded
                       const isHighlighted = idx === highlightedIndex
+                      const isEmptyDept = membersInDept.length === 0
                       return (
                         <button
                           key={dept.department_id}
                           type="button"
                           role="option"
                           aria-selected={isHighlighted}
+                          aria-disabled={isEmptyDept}
                           onMouseEnter={() => setHighlightedIndex(idx)}
-                          onClick={() => addDepartment(dept.name)}
+                          onClick={() => {
+                            if (isEmptyDept) return
+                            addDepartment(dept.name)
+                          }}
                           className={`flex items-center justify-between w-full px-3 py-2 text-sm transition-colors ${
-                            isHighlighted
-                              ? 'bg-accent-subtle text-accent'
-                              : 'text-foreground hover:bg-muted/50'
+                            isEmptyDept
+                              ? 'opacity-50 cursor-not-allowed text-muted-foreground'
+                              : isHighlighted
+                                ? 'bg-accent-subtle text-accent'
+                                : 'text-foreground hover:bg-muted/50'
                           }`}
                         >
                           <div className="flex items-center gap-2">
@@ -505,7 +531,7 @@ export default function NewMeetingPage() {
                             <span>{dept.name}</span>
                           </div>
                           <span className="text-mini text-muted-foreground">
-                            {newCount > 0 ? `+${newCount}명 추가` : '모두 추가됨'}
+                            {isEmptyDept ? '직원 없음' : newCount > 0 ? `+${newCount}명 추가` : '모두 추가됨'}
                           </span>
                         </button>
                       )
