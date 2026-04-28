@@ -28,6 +28,16 @@ const CURRENT_USER_KEY = "workb-current-user";
 const WORKSPACE_ID_KEY = "workb-workspace-id";
 const LEGACY_WORKSPACE_ID_KEY = "workb-current-workspace-id";
 const LEGACY_AUTH_KEYS = ["access_token", "token", "authToken"];
+const SESSION_KEYS = [
+  ACCESS_TOKEN_KEY,
+  REFRESH_TOKEN_KEY,
+  CURRENT_USER_KEY,
+  WORKSPACE_ID_KEY,
+  LEGACY_WORKSPACE_ID_KEY,
+  "workb-auth-mock",
+  "workb-invite-code",
+  "workb-workspace-role",
+];
 
 let refreshPromise: Promise<TokenResponse> | null = null;
 
@@ -123,11 +133,11 @@ function formatValidationError(item: Record<string, unknown>): string {
 }
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  return sessionStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  return sessionStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export function hasStoredSession(): boolean {
@@ -135,39 +145,51 @@ export function hasStoredSession(): boolean {
 }
 
 export function setAuthTokens(accessToken: string, refreshToken: string): void {
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-  localStorage.setItem("workb-auth-mock", "true");
+  sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  sessionStorage.setItem("workb-auth-mock", "true");
+  SESSION_KEYS.forEach((key) => localStorage.removeItem(key));
+  LEGACY_AUTH_KEYS.forEach((key) => localStorage.removeItem(key));
 }
 
 export function clearAuthTokens(): void {
-  const keysToRemove: string[] = [];
+  const sessionKeysToRemove: string[] = [];
+  const localKeysToRemove: string[] = [];
+
+  for (let i = 0; i < sessionStorage.length; i += 1) {
+    const key = sessionStorage.key(i);
+    if (key?.startsWith("workb-")) {
+      sessionKeysToRemove.push(key);
+    }
+  }
 
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i);
     if (key?.startsWith("workb-")) {
-      keysToRemove.push(key);
+      localKeysToRemove.push(key);
     }
   }
 
-  keysToRemove.forEach((key) => localStorage.removeItem(key));
+  sessionKeysToRemove.forEach((key) => sessionStorage.removeItem(key));
+  localKeysToRemove.forEach((key) => localStorage.removeItem(key));
   LEGACY_AUTH_KEYS.forEach((key) => localStorage.removeItem(key));
 }
 
 export function getStoredUser(): StoredUser | null {
-  const raw = localStorage.getItem(CURRENT_USER_KEY);
+  const raw = sessionStorage.getItem(CURRENT_USER_KEY);
   if (!raw) return null;
 
   try {
     return JSON.parse(raw) as StoredUser;
   } catch {
-    localStorage.removeItem(CURRENT_USER_KEY);
+    sessionStorage.removeItem(CURRENT_USER_KEY);
     return null;
   }
 }
 
 export function setStoredUser(user: StoredUser): void {
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+  sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+  localStorage.removeItem(CURRENT_USER_KEY);
 
   if (user.workspace_id) {
     setCurrentWorkspaceId(user.workspace_id);
@@ -180,12 +202,18 @@ function readPositiveNumber(value: string | null): number | null {
 }
 
 export function getCurrentWorkspaceId(): number {
-  const stored = readPositiveNumber(localStorage.getItem(WORKSPACE_ID_KEY));
+  const stored = readPositiveNumber(sessionStorage.getItem(WORKSPACE_ID_KEY));
   if (stored) return stored;
 
-  const legacy = readPositiveNumber(localStorage.getItem(LEGACY_WORKSPACE_ID_KEY));
+  const legacy = readPositiveNumber(
+    sessionStorage.getItem(LEGACY_WORKSPACE_ID_KEY) ??
+      localStorage.getItem(WORKSPACE_ID_KEY) ??
+      localStorage.getItem(LEGACY_WORKSPACE_ID_KEY)
+  );
   if (legacy) {
-    localStorage.setItem(WORKSPACE_ID_KEY, String(legacy));
+    setCurrentWorkspaceId(legacy);
+    localStorage.removeItem(WORKSPACE_ID_KEY);
+    localStorage.removeItem(LEGACY_WORKSPACE_ID_KEY);
     return legacy;
   }
 
@@ -200,8 +228,10 @@ export function getCurrentWorkspaceId(): number {
 
 export function setCurrentWorkspaceId(workspaceId: number): void {
   if (!Number.isFinite(workspaceId) || workspaceId <= 0) return;
-  localStorage.setItem(WORKSPACE_ID_KEY, String(workspaceId));
-  localStorage.setItem(LEGACY_WORKSPACE_ID_KEY, String(workspaceId));
+  sessionStorage.setItem(WORKSPACE_ID_KEY, String(workspaceId));
+  sessionStorage.setItem(LEGACY_WORKSPACE_ID_KEY, String(workspaceId));
+  localStorage.removeItem(WORKSPACE_ID_KEY);
+  localStorage.removeItem(LEGACY_WORKSPACE_ID_KEY);
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {

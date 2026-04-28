@@ -58,7 +58,8 @@ export default function SignupAdminPage() {
         password,
       });
       setCurrentWorkspaceId(signup.workspace_id);
-      localStorage.setItem("workb-invite-code", signup.invite_code);
+      sessionStorage.setItem("workb-invite-code", signup.invite_code);
+      localStorage.removeItem("workb-invite-code");
       await login({ email, password });
       saveUser({
         id: signup.id,
