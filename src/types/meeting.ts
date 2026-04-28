@@ -33,6 +33,8 @@ export interface Meeting {
   title: string
   /** 백엔드 `meeting_type` (예: 일반 회의, 스탠드업) */
   meetingType?: string
+  /** 백엔드 `room_name` (예: 회의실 A, Zoom 등) */
+  roomName?: string
   status: MeetingStatus
   startAt: string        // ISO 8601
   endAt?: string
