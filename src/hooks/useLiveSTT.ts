@@ -94,7 +94,13 @@ export function useLiveSTT(meetingId: string) {
       // 1. 마이크 권한 요청
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        });
         streamRef.current = stream;
       } catch {
         if (!unmounted) {
