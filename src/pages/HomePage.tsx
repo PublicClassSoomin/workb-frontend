@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { Sparkles, Calendar } from 'lucide-react'
 import MeetingCard from '../components/home/MeetingCard'
 import WeeklyStatsCard from '../components/home/WeeklyStats'
-import MiniCalendar from '../components/home/MiniCalendar'
+import WorkspaceMembersAside from '../components/home/WorkspaceMembersAside'
 import type { MeetingStatus } from '../types/meeting'
 import type { Meeting, WeeklyStats } from '../types/meeting'
 import { fetchWorkspaceDashboard } from '../api/dashboard'
@@ -148,8 +148,8 @@ export default function HomePage() {
           {/* Weekly stats */}
           {weeklyStats && <WeeklyStatsCard stats={weeklyStats} />}
 
-          {/* Calendar */}
-          <MiniCalendar meetings={meetings} />
+          {/* Workspace members (Slack-style sidebar) */}
+          <WorkspaceMembersAside workspaceId={workspaceId} />
         </div>
       </aside>
     </div>
