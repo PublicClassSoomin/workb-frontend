@@ -74,6 +74,7 @@ export default function NotificationsPanel({ onClose }: NotificationsPanelProps)
     () => items.filter((n) => !n.read_at).map((n) => n.id),
     [items],
   )
+  const readCount = useMemo(() => items.filter((n) => Boolean(n.read_at)).length, [items])
 
   return (
     <div
@@ -173,8 +174,23 @@ export default function NotificationsPanel({ onClose }: NotificationsPanelProps)
         >
           모두 읽음으로 표시
         </button>
-        <button className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-          알림 설정
+        <button
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={async () => {
+            try {
+              const workspaceId = getCurrentWorkspaceId()
+              await apiRequest<{ deleted_count: number }>(`/notifications/workspaces/${workspaceId}/read`, {
+                method: 'DELETE',
+              })
+              setItems((prev) => prev.filter((n) => !n.read_at))
+            } catch {
+              // ignore
+            }
+          }}
+          disabled={readCount === 0}
+          title={readCount === 0 ? '삭제할 읽은 알림이 없습니다.' : '읽은 알림을 삭제합니다.'}
+        >
+          읽은 알림 삭제
         </button>
       </div>
     </div>
