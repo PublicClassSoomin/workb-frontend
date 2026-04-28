@@ -81,6 +81,26 @@ export interface ConfirmPasswordResetPayload {
   new_password: string
 }
 
+export type SocialProvider = 'google' | 'kakao'
+export type SocialLoginRole = 'admin' | 'member'
+
+export interface OAuthUrlResponse {
+  auth_url: string
+}
+
+export interface DeviceSettingsPayload {
+  is_main_device: boolean
+  selected_mic_id: string | null
+  selected_camera_id: string | null
+  mic_enabled: boolean
+  camera_enabled: boolean
+}
+
+export interface DeviceSettingsResponse extends DeviceSettingsPayload {
+  user_id: number
+  workspace_id: number | null
+}
+
 export function signupAdmin(payload: AdminSignupPayload): Promise<AdminSignupResponse> {
   return apiRequest<AdminSignupResponse>('/users/signup/admin', {
     method: 'POST',
@@ -118,6 +138,15 @@ export function confirmPasswordReset(payload: ConfirmPasswordResetPayload): Prom
   })
 }
 
+export function getSocialOAuthUrl(
+  provider: SocialProvider,
+  role: SocialLoginRole,
+): Promise<OAuthUrlResponse> {
+  return apiRequest<OAuthUrlResponse>(`/users/oauth/${provider}/auth?role=${role}`, {
+    skipAuthRefresh: true,
+  })
+}
+
 export function getMyProfile(): Promise<UserProfileResponse> {
   return apiRequest<UserProfileResponse>('/users/me')
 }
@@ -130,6 +159,17 @@ export async function updateMyProfile(payload: UserProfileUpdatePayload): Promis
   setAuthTokens(response.access_token, response.refresh_token)
   syncStoredUserFromToken(response.user)
   return response
+}
+
+export function getMyDeviceSettings(): Promise<DeviceSettingsResponse> {
+  return apiRequest<DeviceSettingsResponse>('/users/me/device-settings')
+}
+
+export function updateMyDeviceSettings(payload: DeviceSettingsPayload): Promise<DeviceSettingsResponse> {
+  return apiRequest<DeviceSettingsResponse>('/users/me/device-settings', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function withdrawMyAccount(): Promise<MessageResponse> {
