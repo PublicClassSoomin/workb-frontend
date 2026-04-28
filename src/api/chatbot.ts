@@ -1,10 +1,11 @@
 import { apiRequest } from './client'
+import type { WebSource} from '../types/chat'
 
 export interface SendMessageResponse {
     session_id: string
     function_type: string
     answer: string
-    result: Record<string, unknown>
+    result: { sources?: WebSource[] }
     timestamp: string
 }
 

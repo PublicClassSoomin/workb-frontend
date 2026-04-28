@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Monitor, Sparkles, FileText, BarChart2, Upload, StopCircle, Camera } from 'lucide-react'
+import { Monitor, Sparkles, FileText, BarChart2, Upload, StopCircle, Camera } from 'lucide-react'
 import { getCurrentWorkspaceId } from '../../api/client'
 import { analyzeScreen, getAnalyses, uploadPpt } from '../../api/vision'
 import type { ScreenAnalysis, PptSlideResult } from '../../api/vision'

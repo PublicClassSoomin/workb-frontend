@@ -197,6 +197,7 @@ export default function ChatFAB() {
           role: 'assistant',
           content: res.answer,
           timestamp: res.timestamp,
+          sources: res.result?.sources ?? [],
         },
       ])
 
@@ -357,6 +358,28 @@ export default function ChatFAB() {
                     )
                     : msg.content
                   }
+                  {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border flex flex-col gap-1.5">         
+                    <p className="text-micro text-muted-foreground font-medium">🌐 참고 자료</p>
+                    {msg.sources
+                      .filter((s, i, arr) => arr.findIndex(x => x.url === s.url) === i) // URL 중복 제거
+                      .map((s, i) => (                      
+                        <a 
+                          key={i}
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex flex-col gap-0.5 p-2 rounded-lg bg-muted/60 hover:bg-muted transition-colors">
+
+                          <span className="text-mini font-medium text-foreground line-clamp-1">{s.title}
+                          </span>
+                          <span className="text-micro text-muted-foreground line-clamp-1">
+                            {new URL(s.url).hostname}
+                          </span>
+                        </a>
+                    ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
