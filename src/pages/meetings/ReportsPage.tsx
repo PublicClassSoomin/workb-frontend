@@ -453,8 +453,16 @@ function ExportTab({
       }
       setExported((p) => ({ ...p, [serviceId]: true }))
       showToast('내보내기가 완료되었습니다.')
-    } catch {
-      showToast('내보내기에 실패했습니다.', 'error')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
+      if (serviceId === 'google-calendar' && msg.includes('캘린더')) {
+        showToast('Google Calendar가 설정되지 않았습니다.', 'error')
+        if (confirm('사용할 캘린더가 선택되지 않았습니다.\n설정 페이지로 이동하시겠습니까?')) {
+          navigate('/settings/integrations')
+        }
+      } else {
+        showToast('내보내기에 실패했습니다.', 'error')
+      }
     } finally {
       setExporting((p) => ({ ...p, [serviceId]: false }))
     }
