@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { login } from '../../api/auth'
+import { getSocialOAuthUrl, login, type SocialProvider } from '../../api/auth'
 import { useAuth } from '../../context/AuthContext'
 
 type Tab = 'admin' | 'member'
@@ -21,6 +21,13 @@ export default function LoginPage() {
     && typeof location.state.from === 'string'
     ? location.state.from
     : '/'
+
+  useEffect(() => {
+    const errorMessage = new URLSearchParams(location.search).get('error')
+    if (errorMessage) {
+      setError(errorMessage)
+    }
+  }, [location.search])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -64,6 +71,19 @@ export default function LoginPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.')
     } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSocialLogin(provider: SocialProvider) {
+    setLoading(true)
+    setError('')
+
+    try {
+      const { auth_url } = await getSocialOAuthUrl(provider, tab)
+      window.location.href = auth_url
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '소셜 로그인을 시작하지 못했습니다.')
       setLoading(false)
     }
   }
@@ -135,14 +155,16 @@ export default function LoginPage() {
         </div>
         <button
           type="button"
-          onClick={() => console.log('TODO: Google OAuth')}
+          onClick={() => void handleSocialLogin('google')}
+          disabled={loading}
           className="h-10 rounded-lg border border-border bg-card text-sm font-medium hover:bg-muted/50 transition-colors flex items-center justify-center gap-2"
         >
           <span>🔵</span> Google로 계속하기
         </button>
         <button
           type="button"
-          onClick={() => console.log('TODO: Kakao OAuth')}
+          onClick={() => void handleSocialLogin('kakao')}
+          disabled={loading}
           className="h-10 rounded-lg border border-border bg-[#FEE500] text-[#3A1D1D] text-sm font-medium hover:bg-[#FEE500]/90 transition-colors flex items-center justify-center gap-2"
         >
           <span>💛</span> 카카오로 계속하기
