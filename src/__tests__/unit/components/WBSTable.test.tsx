@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import WbsPage from '../../../pages/meetings/WbsPage'
-import type { WbsEpic } from '../../../types/wbs'
 
 vi.mock('../../../data/mockWbs', () => ({
   WBS_M1: [

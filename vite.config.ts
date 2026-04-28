@@ -1,7 +1,7 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+const config = {
   plugins: [react()],
   test: {
     environment: 'jsdom',
@@ -13,4 +13,6 @@ export default defineConfig({
     },
     include: ['src/**/*.test.{ts,tsx}'],
   },
-})
+}
+
+export default defineConfig(config as UserConfig)

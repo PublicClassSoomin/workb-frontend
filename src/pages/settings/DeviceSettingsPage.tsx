@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, Camera, Check, Mic, Monitor, RefreshCw, Save, Volume2 } from 'lucide-react'
+import { getMyDeviceSettings, updateMyDeviceSettings } from '../../api/auth'
 
 const STORAGE_KEY = 'workb-device-settings'
 
@@ -61,6 +62,7 @@ export default function DeviceSettingsPage() {
   const [testing, setTesting] = useState(false)
   const [inputLevel, setInputLevel] = useState(0)
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
@@ -134,6 +136,29 @@ export default function DeviceSettingsPage() {
       setPermissionError(err instanceof Error ? err.message : '장치 목록을 불러오지 못했습니다.')
     } finally {
       setLoadingDevices(false)
+    }
+  }
+
+  async function loadSavedSettings() {
+    try {
+      const settings = await getMyDeviceSettings()
+      const nextSettings: StoredDeviceSettings = {
+        isMainDevice: settings.is_main_device,
+        selectedMicId: settings.selected_mic_id ?? '',
+        selectedCameraId: settings.selected_camera_id ?? '',
+        micEnabled: settings.mic_enabled,
+        cameraEnabled: settings.camera_enabled,
+      }
+
+      stored.current = nextSettings
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings))
+      setIsMainDevice(nextSettings.isMainDevice)
+      setSelectedMicId(nextSettings.selectedMicId)
+      setSelectedCameraId(nextSettings.selectedCameraId)
+      setMicEnabled(nextSettings.micEnabled)
+      setCameraEnabled(nextSettings.cameraEnabled)
+    } catch {
+      // 로그인 전 목업 모드나 API 미연결 상태에서는 로컬 저장값으로 계속 동작합니다.
     }
   }
 
@@ -220,14 +245,36 @@ export default function DeviceSettingsPage() {
     }
   }
 
-  function saveSettings() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+  async function saveSettings() {
+    const nextSettings: StoredDeviceSettings = {
       isMainDevice,
       selectedMicId,
       selectedCameraId,
       micEnabled,
       cameraEnabled,
-    }))
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings))
+    stored.current = nextSettings
+
+    setSaving(true)
+    setPermissionError('')
+
+    try {
+      await updateMyDeviceSettings({
+        is_main_device: isMainDevice,
+        selected_mic_id: selectedMicId || null,
+        selected_camera_id: selectedCameraId || null,
+        mic_enabled: micEnabled,
+        camera_enabled: cameraEnabled,
+      })
+    } catch (err) {
+      setPermissionError(err instanceof Error ? err.message : '장비 설정을 서버에 저장하지 못했습니다.')
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
 
     setSaved(true)
     if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current)
@@ -235,6 +282,7 @@ export default function DeviceSettingsPage() {
   }
 
   useEffect(() => {
+    void loadSavedSettings()
     void loadDevices()
 
     const handleDeviceChange = () => void loadDevices()
@@ -466,11 +514,12 @@ export default function DeviceSettingsPage() {
         {saved && <span className="text-sm text-accent">저장되었습니다.</span>}
         <button
           type="button"
-          onClick={saveSettings}
+          onClick={() => void saveSettings()}
+          disabled={saving}
           className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
         >
           <Save size={15} />
-          저장
+          {saving ? '저장 중...' : '저장'}
         </button>
       </div>
     </div>
