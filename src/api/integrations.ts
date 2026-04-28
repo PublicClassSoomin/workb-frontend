@@ -11,6 +11,8 @@ export interface IntegrationItem {
   is_connected: boolean
   updated_at: string
   selected_channel_id?: string
+  selected_calendar_id?: string
+  selected_calendar_name?: string
 }
 
 export interface IntegrationListResponse {
@@ -133,10 +135,10 @@ export function createGoogleCalendar(workspaceId: number, name: string) {
   })
 }
 
-export function selectGoogleCalendar(workspaceId: number, calendarId: string) {
+export function selectGoogleCalendar(workspaceId: number, calendarId: string, calendarName?: string) {
   const params = new URLSearchParams({ workspace_id: String(workspaceId) })
   return apiFetch<IntegrationItem>(`/integrations/google/calendars/select?${params}`, {
     method: 'POST',
-    body: JSON.stringify({ calendar_id: calendarId }),
+    body: JSON.stringify({ calendar_id: calendarId, calendar_name: calendarName }),
   })
 }

@@ -107,6 +107,7 @@ export default function App() {
 
           {/* 회의: 사후 */}
           <Route path="meetings/post" element={<MeetingSelectPage />} />
+          <Route path="meetings/wbs-select" element={<MeetingSelectPage />} />
           <Route path="meetings/:meetingId/notes" element={<NotesPage />} />
           <Route path="meetings/:meetingId/notes/edit" element={<NotesEditPage />} />
           <Route path="meetings/:meetingId/wbs" element={<WbsPage />} />

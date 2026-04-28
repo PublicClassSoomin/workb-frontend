@@ -102,3 +102,36 @@ export async function uploadMinutePhoto(
   if (!body.photo) throw new Error('Minute photo upload failed: empty response')
   return body.photo
 }
+
+export interface MeetingHistoryItem {
+  id: number
+  title: string
+  status: string
+  scheduled_at?: string | null
+  started_at?: string | null
+  ended_at?: string | null
+  summary?: string | null
+}
+
+export interface MeetingHistoryResult {
+  total: number
+  page: number
+  meetings: MeetingHistoryItem[]
+}
+
+export async function fetchDoneMeetings(
+  workspaceId: number,
+  page = 1,
+  size = 10,
+  keyword = '',
+): Promise<MeetingHistoryResult> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (keyword) params.append('keyword', keyword)
+  const data = await apiRequest<MeetingHistoryResult>(
+    `/meetings/workspaces/${workspaceId}/history?${params}`,
+  )
+  return {
+    ...data,
+    meetings: data.meetings.filter((m) => m.status === 'done'),
+  }
+}
