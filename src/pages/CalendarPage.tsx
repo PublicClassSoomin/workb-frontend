@@ -312,9 +312,6 @@ export default function CalendarPage() {
                   weekday: 'short',
                 })}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {selectedItems.length > 0 ? `${selectedItems.length}건` : '일정 없음'}
-              </p>
             </div>
 
             {selectedItems.length > 0 ? (

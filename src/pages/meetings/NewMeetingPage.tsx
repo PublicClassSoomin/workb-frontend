@@ -132,18 +132,21 @@ export default function NewMeetingPage() {
   }, [])
 
   // 매칭된 개별 직원 (이름 또는 부서명으로 검색)
+  const hasDepartments =
+    departments.length > 0 && allParticipants.some((p) => Boolean(p.department))
+
   const filteredCandidates = allParticipants.filter(
     (p) =>
       !selectedParticipants.some((s) => s.id === p.id) &&
       (trimmed === '' ||
         p.name.toLowerCase().includes(trimmed) ||
-        (p.department?.toLowerCase().includes(trimmed) ?? false))
+        (hasDepartments && (p.department?.toLowerCase().includes(trimmed) ?? false)))
   )
 
   // 부서 선택 UX: "부서 관리"에서 생성된 부서만 노출
-  const matchedDepartments = departments.filter(
-    (d) => trimmed === '' || d.name.toLowerCase().includes(trimmed),
-  )
+  const matchedDepartments = hasDepartments
+    ? departments.filter((d) => trimmed === '' || d.name.toLowerCase().includes(trimmed))
+    : []
 
   // 드롭다운 아이템 총 수 (부서 그룹 + 개별 직원)
   const totalItems = matchedDepartments.length + filteredCandidates.length
@@ -453,7 +456,7 @@ export default function NewMeetingPage() {
                 }}
                 onFocus={() => setDropdownOpen(true)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="이름 또는 부서명으로 검색..."
+                placeholder={hasDepartments ? '이름 또는 부서명으로 검색...' : '이름으로 검색...'}
                 className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
                 aria-label="직원 검색"
                 aria-expanded={dropdownOpen}
@@ -471,7 +474,7 @@ export default function NewMeetingPage() {
                 className="absolute z-20 top-full left-0 right-0 mt-1 rounded-lg border border-border bg-card shadow-lg overflow-hidden max-h-64 overflow-y-auto"
               >
                 {/* 부서 그룹 섹션 */}
-                {matchedDepartments.length > 0 && (
+                {hasDepartments && matchedDepartments.length > 0 && (
                   <>
                     <div className="px-3 py-1.5 text-micro font-medium text-muted-foreground uppercase tracking-wide bg-muted/40 border-b border-border">
                       부서 전체 추가
@@ -513,7 +516,7 @@ export default function NewMeetingPage() {
                 {/* 개별 직원 섹션 */}
                 {filteredCandidates.length > 0 && (
                   <>
-                    {matchedDepartments.length > 0 && (
+                    {hasDepartments && matchedDepartments.length > 0 && (
                       <div className="px-3 py-1.5 text-micro font-medium text-muted-foreground uppercase tracking-wide bg-muted/40 border-b border-border">
                         직원
                       </div>
@@ -568,7 +571,9 @@ export default function NewMeetingPage() {
 
           {selectedParticipants.length === 0 && (
             <p className="text-mini text-muted-foreground mt-1.5">
-              이름 또는 부서명으로 검색해 추가하세요. 부서 선택 시 소속 직원이 일괄 추가됩니다.
+              {hasDepartments
+                ? '이름 또는 부서명으로 검색해 추가하세요. 부서 선택 시 소속 직원이 일괄 추가됩니다.'
+                : '이름으로 검색해 직원을 추가하세요.'}
             </p>
           )}
         </div>

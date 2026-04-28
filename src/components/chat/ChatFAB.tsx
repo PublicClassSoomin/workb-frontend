@@ -368,7 +368,11 @@ export default function ChatFAB() {
                   // ids = null → 전체, ids = [1,2] → 선택된 회의만
                   setShowMeetingSelector(false)
                   if (pendingMessage) {
-                    void sendMessage(pendingMessage, ids)
+                    // null(전체) -> pastMeetings 전체 ID 명시적으로 전달
+                    const idsToSend = ids === null
+                      ? pastMeetings.map((m) => m.meeting_id)
+                      : ids
+                    void sendMessage(pendingMessage, idsToSend)
                     setPendingMessage(null)
                   }
                 }}

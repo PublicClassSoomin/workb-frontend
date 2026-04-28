@@ -6,7 +6,7 @@ import {
   ArrowLeft, FileBarChart2, Share2, ExternalLink, Lock, ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { getCurrentWorkspaceId, useAuth as _useAuth } from '../../api/client'
+import { getCurrentWorkspaceId } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import {
   generateMinutes, getMinutes,

@@ -1,90 +1,287 @@
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Monitor, Sparkles, FileText, BarChart2 } from 'lucide-react'
+import { ArrowLeft, Monitor, Sparkles, FileText, BarChart2, Upload, StopCircle, Camera } from 'lucide-react'
+import { getCurrentWorkspaceId } from '../../api/client'
+import { analyzeScreen, getAnalyses, uploadPpt } from '../../api/vision'
+import type { ScreenAnalysis, PptSlideResult } from '../../api/vision'
 
-const MOCK_ANALYSIS = [
-  {
-    id: 's1',
-    type: 'slide' as const,
-    timestamp: '00:05:20',
-    title: '슬라이드 3: Q1 KPI 달성 현황',
-    extracted: 'DAU 목표: 50,000 / 달성: 56,000 (+12%)\n전환율 목표: 8% / 달성: 5% (-3%p)',
-    linked: 'Q1 회고 안건과 연결됨',
-  },
-  {
-    id: 's2',
-    type: 'chart' as const,
-    timestamp: '00:12:45',
-    title: '차트: 주간 활성 사용자 추이',
-    extracted: '3월 4주 피크, 이후 완만한 하락. 신규 가입자 유입 감소 추정.',
-    linked: 'Q2 목표 설정 안건과 연결됨',
-  },
-  {
-    id: 's3',
-    type: 'slide' as const,
-    timestamp: '00:25:10',
-    title: '슬라이드 7: Q2 OKR 초안',
-    extracted: '목표 1: 온보딩 전환율 15% 개선\n목표 2: STT 연동 완료\n목표 3: WBS 자동화',
-    linked: '결정사항으로 마킹됨',
-  },
-]
+const DEVICE_STORAGE_KEY = 'workb-device-settings'
 
-export default function LiveScreenPage() {
-  const { meetingId } = useParams()
-  const navigate = useNavigate()
+// 화면 캡처 결과와 PPT 슬라이드 결과를 통합 리스트로 표시
+type AnalysisItem =
+    | { kind: 'screen'; data: ScreenAnalysis }
+    | { kind: 'slide'; data: PptSlideResult & { timestamp: string } }
 
-  return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
-      <div className="flex items-center gap-2 mb-5">
-        <button onClick={() => navigate(`/live/${meetingId}`)} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="뒤로">
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">화면 공유 해석</h1>
-          <p className="text-sm text-muted-foreground">슬라이드·차트를 분석하고 발언과 자동 결합합니다.</p>
-        </div>
-      </div>
+// localStorage에서 메인 장비 여부 읽기
+function getIsMainDevice(): boolean {
+    try {
+        return JSON.parse(localStorage.getItem(DEVICE_STORAGE_KEY) ?? '{}').isMainDevice ?? false
+    } catch {
+        return false
+    }
+}
 
-      {/* Screen share preview */}
-      <div className="rounded-xl border-2 border-dashed border-border bg-muted/20 aspect-video flex flex-col items-center justify-center mb-5 gap-2">
-        <Monitor size={36} className="text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">화면 공유 미리보기</p>
-        <button
-          onClick={() => console.log('TODO: start screen share capture')}
-          className="px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
-        >
-          화면 공유 시작
-        </button>
-      </div>
+interface Props {
+  meetingId: number
+  // LivePage 패널 안에 들어갈 때는 compact, LiveScreenPage 단독일 때는 full
+  compact?: boolean
+}
 
-      {/* Analysis results */}
-      <div className="flex items-center gap-2 mb-3">
-        <Sparkles size={14} className="text-accent" />
-        <span className="text-sm font-medium text-foreground">AI 분석 결과</span>
-        <span className="text-mini text-muted-foreground">슬라이드 {MOCK_ANALYSIS.length}개 감지됨</span>
-      </div>
+export default function LiveScreenPage({ meetingId, compact = false }: Props) {
+    const workspaceId = getCurrentWorkspaceId()
+    const isMainDevice = getIsMainDevice()
 
-      <div className="flex flex-col gap-3">
-        {MOCK_ANALYSIS.map((item) => (
-          <div key={item.id} className="p-3.5 rounded-lg border border-border bg-card">
-            <div className="flex items-start gap-2 mb-2">
-              <div className="w-7 h-7 rounded-lg bg-accent-subtle flex items-center justify-center shrink-0">
-                {item.type === 'chart' ? <BarChart2 size={14} className="text-accent" /> : <FileText size={14} className="text-accent" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-foreground">{item.title}</p>
-                  <span className="text-mini text-muted-foreground shrink-0">{item.timestamp}</span>
-                </div>
-                <p className="text-mini text-muted-foreground mt-1 whitespace-pre-line">{item.extracted}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border">
-              <Sparkles size={11} className="text-accent" />
-              <span className="text-mini text-accent">{item.linked}</span>
-            </div>
+    const [items, setItems] = useState<AnalysisItem[]>([])
+    const [isSharing, setIsSharing] = useState(false)
+    const [isAnalyzing, setIsAnalyzing] = useState(false) // 수동 캡처 분석 중
+    const [pptLoading, setPptLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    // 화면 공유 스트림 ref — 리렌더링 없이 cleanup
+    const streamRef = useRef<MediaStream | null>(null)
+    const videoRef = useRef<HTMLVideoElement>(null)   // 미리보기용
+    const canvasRef = useRef<HTMLCanvasElement>(null) // 캡처용 offscreen canvas
+
+    // 마운트 시 기존 분석 결과 복원
+    useEffect(() => {
+        getAnalyses(workspaceId, meetingId)
+            .then(({ analyses }) =>
+                setItems(analyses.map((d) => ({ kind: 'screen', data: d })))
+            )
+            .catch(() => {})
+    }, [meetingId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 언마운트 시 스트림 정리
+    useEffect(() => () => stopSharing(), [])
+
+    // 화면 공유 시작 — 메인 장비에서만 호출됨
+    async function startSharing() {
+        setError(null)
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+            streamRef.current = stream
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream
+                await videoRef.current.play()
+            }
+            setIsSharing(true)
+            // 브라우저 공유 중지 버튼 누를 때도 상태 동기화
+            stream.getVideoTracks()[0].addEventListener('ended', stopSharing)
+        } catch (e: unknown) {
+            // 사용자가 다이얼로그 취소한 경우는 에러 표시 안 함
+            if (e instanceof Error && e.name !== 'NotAllowedError') {
+                setError('화면 공유를 시작할 수 없습니다.')
+            }
+        }
+    }
+
+    function stopSharing() {
+        streamRef.current?.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+        setIsSharing(false)
+    }
+
+    // 수동 캡처 → 현재 video 프레임을 canvas에 그려 Blob 변환 → analyzeScreen API
+    async function handleCapture() {
+        const video = videoRef.current
+        const canvas = canvasRef.current
+        if (!video || !canvas || video.readyState < 2) return
+
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        canvas.getContext('2d')!.drawImage(video, 0, 0)
+
+        canvas.toBlob(async (blob) => {
+            if (!blob) return
+            setIsAnalyzing(true)
+            try {
+                const result = await analyzeScreen(workspaceId, meetingId, blob)
+                // 최신 캡처를 리스트 맨 앞에 추가
+                setItems((prev) => [{ kind: 'screen', data: result }, ...prev])
+            } catch {
+                setError('화면 분석 중 오류가 발생했습니다.')
+            } finally {
+                setIsAnalyzing(false)
+            }
+        }, 'image/png')
+    }
+
+    // PPT 업로드 → 슬라이드별 분석 결과를 기존 캡처 결과와 함께 리스트에 추가
+    // 사용자가 화면에 노출된 PPT를 직접 업로드하면 캡처 결과와 대조 가능
+    async function handlePptUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0]
+        if (!file) return
+        e.target.value = '' // 같은 파일 재업로드 허용
+
+        setPptLoading(true)
+        setError(null)
+        try {
+            const { slides } = await uploadPpt(workspaceId, meetingId, file)
+            const now = new Date().toISOString()
+            setItems((prev) => [                                                                                     
+                ...slides.map((s): AnalysisItem => ({
+                    kind: 'slide',                                                                                   
+                    data: { ...s, timestamp: now },                                                                
+                })),
+                ...prev,                                                                                             
+            ])
+        } catch {
+            setError('PPT 분석 중 오류가 발생했습니다.')
+        } finally {
+            setPptLoading(false)
+        }
+    }
+
+    // compact 모드(LivePage 패널)와 full 모드(LiveScreenPage)의 크기 차이                                           
+    const previewAspect = compact ? 'aspect-video' : 'aspect-video'
+    const iconSize = compact ? 20 : 36                                                                               
+    const btnSize = compact ? 'px-2.5 py-1.5 text-mini' : 'px-4 py-2 text-sm'
+
+    return (                                                                                                       
+      <div className="flex flex-col h-full">                                                                       
+          {/* 화면 공유 미리보기 */}                                                                               
+          <div className={`rounded-lg border-2 border-dashed border-border bg-muted/20 ${previewAspect} flex 
+flex-col items-center justify-center mb-3 overflow-hidden relative shrink-0`}>                                       
+              {/* video는 항상 DOM에 존재 — startSharing() 시 srcObject 설정 후 visible */}                      
+              <video                                                                                               
+                  ref={videoRef}                                                                                 
+                  className={`w-full h-full object-contain ${isSharing ? 'block' : 'hidden'}`}                     
+                  muted                                                                                            
+                  playsInline                                                                                      
+              />                                                                                                   
+              {!isSharing && (isMainDevice ? (                                                                   
+                  <>
+                      <Monitor size={iconSize} className="text-muted-foreground/30" />
+                      <p className={`${compact ? 'text-mini' : 'text-sm'} text-muted-foreground`}>                 
+                          화면 공유 미리보기                                                                       
+                      </p>
+                      <button                                                                                                      
+                        onClick={startSharing}                                                                                 
+                        className={`mt-1 flex items-center gap-1 ${btnSize} rounded-lg bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors`}                                                                   
+                    >                                                                                                            
+                        <Monitor size={compact ? 12 : 15} />                                                                     
+                        화면 공유 시작                                                                                         
+                      </button>                                                                         
+                  </>                                                                                              
+              ) : (                                                                                              
+                  <>
+                      <Monitor size={iconSize} className="text-muted-foreground/20" />
+                      <p className={`${compact ? 'text-mini' : 'text-sm'} text-muted-foreground mt-2`}>            
+                          메인 장비에서만 화면 공유가 가능합니다.
+                      </p>                                                                                         
+                      <p className="text-micro text-muted-foreground mt-1">                                      
+                          장비 설정에서 이 기기를 메인으로 지정하세요.                                             
+                      </p>                                                                                         
+                  </>                                                                                              
+              ))}                                                                                                  
+              {isAnalyzing && (                                                                                  
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">                  
+                      <span className="text-white text-sm font-medium">분석 중...</span>
+                  </div>                                                                                           
+              )}                                                                                                 
+          </div>                                                                                                   
+                                                                                                                 
+          {/* offscreen canvas */}
+          <canvas ref={canvasRef} className="hidden" />
+                                                                                                                   
+          {/* 컨트롤 버튼 */}
+          <div className="flex flex-wrap gap-1.5 mb-3 shrink-0">                                                  
+              {isSharing && (                                                                                       
+                  <button
+                      onClick={stopSharing}                                                                        
+                      className={`flex items-center gap-1 ${btnSize} rounded-lg bg-destructive text-destructive-foreground font-medium hover:bg-destructive/90 transition-colors`}>                                                                                                
+                      <StopCircle size={compact ? 12 : 15} />                                                      
+                      공유 중지                                                                                  
+                  </button>
+              )}
+                 
+              {/* 캡처 — 공유 중일 때만 활성화 */}                                                                 
+              <button
+                  onClick={handleCapture}                                                                          
+                  disabled={!isSharing || isAnalyzing}                                                           
+                  className={`flex items-center gap-1 ${btnSize} rounded-lg border border-border font-medium hover:bg-muted/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}                                
+              >
+                  <Camera size={compact ? 12 : 15} />                                                              
+                  캡처                                                                                           
+              </button>
+
+              {/* PPT 업로드 */}
+              <label className={`flex items-center gap-1 ${btnSize} rounded-lg border border-border font-medium hover:bg-muted/60 transition-colors cursor-pointer`}>                                                                
+                  <Upload size={compact ? 12 : 15} />
+                  {pptLoading ? '분석 중...' : 'PPT'}                                                              
+                  <input                                                                                           
+                      type="file"
+                      accept=".pptx,.ppt"                                                                          
+                      className="hidden"                                                                           
+                      onChange={handlePptUpload}
+                      disabled={pptLoading}                                                                        
+                  />                                                                                             
+              </label>
           </div>
-        ))}
+
+          {error && <p className={`${compact ? 'text-micro' : 'text-sm'} text-destructive mb-2 shrink-0`}>{error}</p>}
+                                                                                                                   
+          {/* 분석 결과 목록 */}                                                                                 
+          <div className="flex items-center gap-1.5 mb-2 shrink-0">
+              <Sparkles size={compact ? 11 : 14} className="text-accent" />                                        
+              <span className={`${compact ? 'text-mini' : 'text-sm'} font-medium text-foreground`}>AI 분석 결과</span>                                                                                                          
+              <span className={`${compact ? 'text-micro' : 'text-mini'} text-muted-foreground`}>{items.length}개</span>                                                                      
+          </div>                                                                                                 
+                                                                                                                   
+          <div className="flex-1 overflow-y-auto flex flex-col gap-2 min-h-0">                                     
+              {items.map((item, idx) => {
+                  const isSlide = item.kind === 'slide'                                                            
+                  const label = isSlide                                                                          
+                      ? `슬라이드 ${(item.data as PptSlideResult).slide_number}`                                   
+                      : '화면 캡처'
+                  const time = new Date(item.data.timestamp).toLocaleTimeString('ko-KR', {                         
+                      hour: '2-digit', minute: '2-digit',                                                        
+                  })                                                                                               
+                  const { ocr_text, chart_description, key_points } = item.data                                    
+                                                                                                                   
+                  return (                                                                                         
+                      <div key={idx} className="p-2.5 rounded-lg border border-border bg-background shrink-0">     
+                          <div className="flex items-start gap-2 mb-1.5">                                        
+                              <div className="w-6 h-6 rounded bg-accent-subtle flex items-center justify-center shrink-0">                                                                                                           
+                                  {chart_description
+                                      ? <BarChart2 size={12} className="text-accent" />                            
+                                      : <FileText size={12} className="text-accent" />                           
+                                  }                                                                                
+                              </div>
+                              <div className="flex-1 min-w-0">                                                     
+                                  <div className="flex items-center justify-between gap-1">                      
+                                      <p className="text-mini font-medium text-foreground truncate">{label}</p>    
+                                      <span className="text-micro text-muted-foreground shrink-0">{time}</span>
+                                  </div>                                                                           
+                                  {isSlide && (item.data as PptSlideResult).summary && (                         
+                                      <p className="text-micro text-muted-foreground mt-0.5">                      
+                                          {(item.data as PptSlideResult).summary}                                  
+                                      </p>                                                                         
+                                  )}                                                                               
+                                  {ocr_text && (                                                                 
+                                      <p className="text-micro text-muted-foreground mt-0.5 whitespace-pre-line line-clamp-2">                                                                                                       
+                                          {ocr_text}
+                                      </p>                                                                         
+                                  )}                                                                             
+                              </div>
+                          </div>                                                                                   
+                          {chart_description && (
+                              <p className="text-micro text-foreground/70 mb-1">{chart_description}</p>            
+                          )}                                                                                       
+                          {key_points.length > 0 && (
+                              <div className="flex flex-col gap-0.5 pt-1.5 border-t border-border">                
+                                  {key_points.map((pt, i) => (                                                     
+                                      <div key={i} className="flex items-center gap-1">
+                                          <Sparkles size={10} className="text-accent" />                           
+                                          <span className="text-micro text-accent">{pt}</span>                   
+                                      </div>                                                                       
+                                  ))}                                                                            
+                              </div>                                                                               
+                          )}
+                      </div>                                                                                       
+                  )                                                                                              
+              })}
+          </div>
       </div>
-    </div>
   )
 }
