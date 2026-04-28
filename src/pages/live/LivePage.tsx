@@ -677,7 +677,13 @@ export default function LivePage() {
               </button>
             ) : (
               <button
-                onClick={stopMeeting}
+                onClick={() => {
+                  endWorkspaceMeeting(
+                    getCurrentWorkspaceId(),
+                    Number(meetingId),
+                  );
+                  stopMeeting();
+                }}
                 disabled={wsStatus === "finalizing"}
                 className={clsx(
                   "flex items-center gap-1.5 h-8 px-3 rounded-lg text-white text-mini font-medium transition-colors",
