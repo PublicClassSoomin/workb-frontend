@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import type { Participant } from '../../types/meeting'
+import { useProfileImage } from '../../utils/profileImage'
 
 interface AvatarProps {
   participant: Participant
@@ -9,6 +10,19 @@ interface AvatarProps {
 
 export function Avatar({ participant, size = 'sm', className }: AvatarProps) {
   const sizeClass = size === 'sm' ? 'w-6 h-6 text-micro' : 'w-8 h-8 text-mini'
+  const profileImage = useProfileImage(participant.userId)
+
+  if (profileImage) {
+    return (
+      <img
+        src={profileImage}
+        alt={participant.name}
+        title={participant.name}
+        className={clsx('inline-flex rounded-full object-cover shrink-0 select-none', sizeClass, className)}
+      />
+    )
+  }
+
   return (
     <span
       className={clsx(

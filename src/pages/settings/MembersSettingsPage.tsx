@@ -12,6 +12,7 @@ import {
   type UserRole,
   type WorkspaceMember,
 } from '../../api/workspace'
+import { useProfileImage } from '../../utils/profileImage'
 
 type Role = '관리자' | '멤버' | '뷰어'
 
@@ -41,6 +42,29 @@ function getAvatarColor(userId: number): string {
 
 function getInitial(name: string): string {
   return name.trim().charAt(0) || '?'
+}
+
+function MemberAvatar({ member, className }: { member: WorkspaceMember; className?: string }) {
+  const profileImage = useProfileImage(member.user_id)
+
+  if (profileImage) {
+    return (
+      <img
+        src={profileImage}
+        alt={member.name}
+        className={`w-8 h-8 rounded-full object-cover shrink-0 ${className ?? ''}`}
+      />
+    )
+  }
+
+  return (
+    <div
+      className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${className ?? ''}`}
+      style={{ backgroundColor: getAvatarColor(member.user_id) }}
+    >
+      {getInitial(member.name)}
+    </div>
+  )
 }
 
 export default function MembersSettingsPage() {
@@ -196,12 +220,7 @@ export default function MembersSettingsPage() {
             {/* Mobile layout */}
             <div className="flex items-center justify-between gap-2 md:hidden">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-                  style={{ backgroundColor: getAvatarColor(member.user_id) }}
-                >
-                  {getInitial(member.name)}
-                </div>
+                <MemberAvatar member={member} />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{member.name}</p>
                   <p className="text-mini text-muted-foreground truncate">{member.email}</p>
@@ -226,12 +245,7 @@ export default function MembersSettingsPage() {
             {/* Desktop layout */}
             <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto_auto] gap-3 items-center">
               <div className="flex items-center gap-2.5">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
-                  style={{ backgroundColor: getAvatarColor(member.user_id) }}
-                >
-                  {getInitial(member.name)}
-                </div>
+                <MemberAvatar member={member} />
                 <div>
                   <p className="text-sm font-medium text-foreground">{member.name}</p>
                   <p className="text-mini text-muted-foreground">{member.email}</p>

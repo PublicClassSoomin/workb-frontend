@@ -7,6 +7,7 @@ import { updateMyProfile, withdrawMyAccount } from '../../api/auth'
 import { useAuth } from '../../context/AuthContext'
 import { useAccentColor, type AccentPreset } from '../../hooks/useAccentColor'
 import { useFontScale, type FontScale } from '../../context/FontScaleContext'
+import { getProfileImage, setProfileImage } from '../../utils/profileImage'
 
 const MAX_PROFILE_IMAGE_SIZE = 1024 * 1024
 
@@ -19,10 +20,6 @@ const FONT_SCALE_OPTIONS: {
   { id: 'md', label: '보통', hint: '18px 기준' },
   { id: 'lg', label: '크게', hint: '20px 기준' },
 ]
-
-function getProfileImageKey(userId: number | undefined): string {
-  return `workb-profile-image-${userId ?? 'guest'}`
-}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -56,7 +53,7 @@ export default function MyPage() {
   const [withdrawing, setWithdrawing] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const profileImageKey = useMemo(() => getProfileImageKey(user?.id), [user?.id])
+  const profileImageUserId = useMemo(() => user?.id, [user?.id])
   const committedSettingsRef = useRef({
     fontScale,
     accentPreset,
@@ -68,8 +65,8 @@ export default function MyPage() {
   }, [user?.name])
 
   useEffect(() => {
-    setDraftProfileImage(localStorage.getItem(profileImageKey) ?? '')
-  }, [profileImageKey])
+    setDraftProfileImage(getProfileImage(profileImageUserId))
+  }, [profileImageUserId])
 
   useEffect(() => {
     setDraftFontScale(fontScale)
@@ -144,11 +141,7 @@ export default function MyPage() {
         savedName = response.user.name
       }
 
-      if (draftProfileImage) {
-        localStorage.setItem(profileImageKey, draftProfileImage)
-      } else {
-        localStorage.removeItem(profileImageKey)
-      }
+      setProfileImage(profileImageUserId, draftProfileImage)
 
       setFontScale(draftFontScale)
       setAccentPreset(draftAccentPreset)
