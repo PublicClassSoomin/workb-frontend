@@ -96,7 +96,8 @@ export default function OnboardingInvitePage() {
       setSending(false)
     }
 
-    localStorage.setItem('workb-auth-mock', 'true')
+    sessionStorage.setItem('workb-auth-mock', 'true')
+    localStorage.removeItem('workb-auth-mock')
     navigate('/')
   }
 
