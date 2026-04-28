@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Users } from 'lucide-react'
 import { getWorkspaceMembers, type UserRole, type WorkspaceMember } from '../../api/workspace'
+import { useProfileImage } from '../../utils/profileImage'
 
 const AVATAR_COLORS = ['#6b78f6', '#22c55e', '#f97316', '#ec4899', '#eab308', '#14b8a6', '#8b5cf6']
 
@@ -33,6 +34,30 @@ function sortMembers(list: WorkspaceMember[]): WorkspaceMember[] {
     if (ra !== rb) return ra - rb
     return a.name.localeCompare(b.name, 'ko')
   })
+}
+
+function MemberAvatar({ member }: { member: WorkspaceMember }) {
+  const profileImage = useProfileImage(member.user_id)
+
+  if (profileImage) {
+    return (
+      <img
+        src={profileImage}
+        alt={member.name}
+        className="w-8 h-8 rounded-full object-cover shrink-0"
+      />
+    )
+  }
+
+  return (
+    <div
+      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+      style={{ backgroundColor: getAvatarColor(member.user_id) }}
+      aria-hidden
+    >
+      {getInitial(member.name)}
+    </div>
+  )
 }
 
 export default function WorkspaceMembersAside({ workspaceId }: { workspaceId: number }) {
@@ -94,13 +119,7 @@ export default function WorkspaceMembersAside({ workspaceId }: { workspaceId: nu
         <ul className="max-h-[min(22rem,calc(100vh-20rem))] overflow-y-auto divide-y divide-border">
           {sorted.map((m) => (
             <li key={m.user_id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/30 transition-colors">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                style={{ backgroundColor: getAvatarColor(m.user_id) }}
-                aria-hidden
-              >
-                {getInitial(m.name)}
-              </div>
+              <MemberAvatar member={m} />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground truncate">{m.name}</p>
                 <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
