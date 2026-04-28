@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('../../api/auth', () => ({
+  getSocialOAuthUrl: vi.fn(),
   login: vi.fn(),
   logout: vi.fn(),
 }))
@@ -19,11 +20,11 @@ vi.mock('../../context/AuthContext', () => ({
 }))
 
 import LoginPage from '../../pages/auth/LoginPage'
-import { login } from '../../api/auth'
+import { getSocialOAuthUrl, login } from '../../api/auth'
 
-function renderLoginPage() {
+function renderLoginPage(initialPath = '/login') {
   return render(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<div>홈 페이지</div>} />
@@ -34,7 +35,8 @@ function renderLoginPage() {
 
 describe('로그인 플로우 통합 테스트', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    window.history.replaceState(null, '', '/')
     mockRefreshSession.mockResolvedValue(null)
     mockSignOut.mockResolvedValue(undefined)
   })
@@ -62,13 +64,19 @@ describe('로그인 플로우 통합 테스트', () => {
   })
 
   describe('로그인 실패', () => {
+    it('소셜 로그인 콜백 에러 쿼리를 표시합니다', async () => {
+      renderLoginPage('/login?error=%EA%B4%80%EB%A6%AC%EC%9E%90%20%EA%B3%84%EC%A0%95%EC%9C%BC%EB%A1%9C%20%EB%A1%9C%EA%B7%B8%EC%9D%B8%ED%95%B4%EC%A3%BC%EC%84%B8%EC%9A%94.')
+
+      expect(await screen.findByText('관리자 계정으로 로그인해주세요.')).toBeInTheDocument()
+    })
+
     it('잘못된 자격증명으로 로그인하면 에러 메시지가 표시됩니다', async () => {
       vi.mocked(login).mockRejectedValueOnce(new Error('이메일 또는 비밀번호가 올바르지 않습니다.'))
 
       renderLoginPage()
 
       await userEvent.type(screen.getByLabelText('이메일'), 'wrong@test.com')
-      await userEvent.type(screen.getByLabelText('비밀번호'), 'wrong')
+      await userEvent.type(screen.getByLabelText('비밀번호'), 'Wrong1234')
       await userEvent.click(screen.getByRole('button', { name: '로그인' }))
 
       await waitFor(() => {
@@ -100,6 +108,37 @@ describe('로그인 플로우 통합 테스트', () => {
 
       await waitFor(() => {
         expect(screen.getByText('멤버 계정으로 로그인해주세요.')).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('소셜 로그인', () => {
+    it('관리자 탭에서 Google 소셜 로그인 URL로 이동합니다', async () => {
+      vi.mocked(getSocialOAuthUrl).mockResolvedValueOnce({
+        auth_url: '#google-oauth',
+      })
+
+      renderLoginPage()
+
+      await userEvent.click(screen.getByRole('button', { name: /Google로 계속하기/ }))
+
+      await waitFor(() => {
+        expect(getSocialOAuthUrl).toHaveBeenCalledWith('google', 'admin')
+      })
+      expect(window.location.hash).toBe('#google-oauth')
+    })
+
+    it('멤버 탭에서 카카오 소셜 로그인 URL을 요청합니다', async () => {
+      vi.mocked(getSocialOAuthUrl).mockResolvedValueOnce({
+        auth_url: '#kakao-oauth',
+      })
+
+      renderLoginPage()
+      await userEvent.click(screen.getByRole('tab', { name: '멤버' }))
+      await userEvent.click(screen.getByRole('button', { name: /카카오로 계속하기/ }))
+
+      await waitFor(() => {
+        expect(getSocialOAuthUrl).toHaveBeenCalledWith('kakao', 'member')
       })
     })
   })

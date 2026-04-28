@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
 import type { Meeting } from '../../../types/meeting'
 
 // fetchWorkspaceMeetingDetail을 사용하는 커스텀 훅 시뮬레이션.
