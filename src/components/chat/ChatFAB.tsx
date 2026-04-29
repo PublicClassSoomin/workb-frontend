@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, Loader2 } from 'lucide-react'
+import { X, Send, Loader2, Paperclip, CheckCircle2 } from 'lucide-react'
 import clsx from 'clsx'
 import ReactMarkdown from 'react-markdown'
 import WorkbAssistantAvatar from './WorkbAssistantAvatar'
 import type { ChatMessage } from '../../types/chat'
 import { useLocation } from 'react-router-dom'
 import { getCurrentWorkspaceId } from '../../api/client'
-import { sendChatMessage, getChatHistory, getPastMeetings, type PastMeeting } from '../../api/chatbot'
+import { sendChatMessage, getChatHistory, getPastMeetings, type PastMeeting, analyzeDocument } from '../../api/chatbot'
 import remarkGfm from 'remark-gfm'
 
 // sessionStorge 키 - workspace별로 세션 분리
@@ -115,6 +115,8 @@ export default function ChatFAB() {
   const [messages, setMessages] = useState<ChatMessage[]>([getWelcomeMessage(meetingId)])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -219,6 +221,42 @@ export default function ChatFAB() {
       ])
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if(!file) return
+    e.target.value = ''
+
+    // 업로드 시작 메시지 즉시 표시
+    const msgId = `upload-${Date.now()}`
+    setMessages((prev) => [...prev, {
+      id: msgId,
+      role: 'assistant',
+      content: `📎 **${file.name}** 업로드 중...`,
+      timestamp: new Date().toISOString(),
+    }])
+    setUploadStatus('uploading')
+
+    try {
+      await analyzeDocument(workspaceId, file)
+      setUploadStatus('done')
+      setTimeout(() => setUploadStatus('idle'), 2000)
+      setMessages((prev) => prev.map((m) =>
+        m.id === msgId
+          ? { ...m, content:  `✅ **${file.name}** 업로드 완료!\n요약 및 검색이 가능합니다.` }
+          : m
+      ))
+    } catch (err) {
+      setUploadStatus('error')
+      setTimeout(() => setUploadStatus('idle'), 2000)
+      const detail = err instanceof Error ? err.message : String(err)
+      setMessages((prev) => prev.map((m) => 
+        m.id == msgId
+          ? { ...m, content: `❌ **${file.name}** 업로드 실패: ${detail}` }
+          : m
+      ))
     }
   }
 
@@ -417,6 +455,15 @@ export default function ChatFAB() {
             <div ref={bottomRef} />
           </div>
 
+          {/* 파일 첨부 버튼 */}
+          <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.pptx,.ppt,.html,.htm,.md,.markdown,.docx,.doc,.xlsx,.xls"
+              className="hidden"
+              onChange={handleFileUpload}
+          />
+
           {/* Input */}
           <form
             className="flex items-center gap-2 px-3 py-2.5 border-t border-border"
@@ -425,6 +472,21 @@ export default function ChatFAB() {
               void handleSend()
             }}
           >
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadStatus === 'uploading'}
+              className='shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40'
+              aria-label="파일 첨부"
+            >
+              {uploadStatus === 'uploading' ? (
+                <Loader2 size={16} className='animate-spin' />
+              ) : uploadStatus === 'done' ? (
+                <CheckCircle2 size={16} className="text-green-500" />
+              ) : (
+                <Paperclip size={16} />
+              )}
+            </button>
             <input
               ref={inputRef}
               type="text"

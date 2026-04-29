@@ -3,6 +3,8 @@ import { Monitor, Sparkles, FileText, BarChart2, Upload, StopCircle, Camera } fr
 import { getCurrentWorkspaceId } from '../../api/client'
 import { analyzeScreen, getAnalyses, uploadPpt } from '../../api/vision'
 import type { ScreenAnalysis, PptSlideResult } from '../../api/vision'
+import { analyzeDocument } from '../../api/chatbot'
+import type { DocumentAnalysis } from '../../api/chatbot'
 
 const DEVICE_STORAGE_KEY = 'workb-device-settings'
 
@@ -10,6 +12,7 @@ const DEVICE_STORAGE_KEY = 'workb-device-settings'
 type AnalysisItem =
     | { kind: 'screen'; data: ScreenAnalysis }
     | { kind: 'slide'; data: PptSlideResult & { timestamp: string } }
+    | { kind: 'document'; data: DocumentAnalysis}
 
 // localStorage에서 메인 장비 여부 읽기
 function getIsMainDevice(): boolean {
@@ -35,6 +38,7 @@ export default function LiveScreenPage({ meetingId, compact = false }: Props) {
     const [isAnalyzing, setIsAnalyzing] = useState(false) // 수동 캡처 분석 중
     const [pptLoading, setPptLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [docLoading, setDocLoading] = useState(false)
 
     // 화면 공유 스트림 ref — 리렌더링 없이 cleanup
     const streamRef = useRef<MediaStream | null>(null)
@@ -107,27 +111,57 @@ export default function LiveScreenPage({ meetingId, compact = false }: Props) {
 
     // PPT 업로드 → 슬라이드별 분석 결과를 기존 캡처 결과와 함께 리스트에 추가
     // 사용자가 화면에 노출된 PPT를 직접 업로드하면 캡처 결과와 대조 가능
-    async function handlePptUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0]
         if (!file) return
         e.target.value = '' // 같은 파일 재업로드 허용
 
-        setPptLoading(true)
-        setError(null)
-        try {
-            const { slides } = await uploadPpt(workspaceId, meetingId, file)
-            const now = new Date().toISOString()
-            setItems((prev) => [                                                                                     
-                ...slides.map((s): AnalysisItem => ({
-                    kind: 'slide',                                                                                   
-                    data: { ...s, timestamp: now },                                                                
-                })),
-                ...prev,                                                                                             
-            ])
-        } catch {
-            setError('PPT 분석 중 오류가 발생했습니다.')
-        } finally {
-            setPptLoading(false)
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+        const isImage = ['png', 'jpg', 'jpeg', 'webp'].includes(ext)
+        const isPpt = ['ppt', 'pptx'].includes(ext)
+
+        if (isImage) {
+          setIsAnalyzing(true)
+          setError(null)
+          try {
+            const blob = new Blob([await file.arrayBuffer()], { type: file.type })
+            const result = await analyzeScreen(workspaceId, meetingId, blob)
+            setItems((prev) => [{ kind: 'screen', data: result }, ...prev])
+          } catch {
+            setError('이미지 분석 중 오류가 발생했습니다.')
+          } finally {
+            setIsAnalyzing(false)
+          }
+        } else if (isPpt) {
+          setPptLoading(true)
+          setError(null)
+          try {
+              const { slides } = await uploadPpt(workspaceId, meetingId, file)
+              const now = new Date().toISOString()
+              setItems((prev) => [                                                                                     
+                  ...slides.map((s): AnalysisItem => ({
+                      kind: 'slide',                                                                                   
+                      data: { ...s, timestamp: now },                                                                
+                  })),
+                  ...prev,                                                                                             
+              ])
+          } catch {
+              setError('PPT 분석 중 오류가 발생했습니다.')
+          } finally {
+              setPptLoading(false)
+          }
+        } else {
+          // pdf, docx, xlsx 등 → LLM 요약 + 백그라운드 ChromaDB 인제스트
+          setDocLoading(true)
+          setError(null)
+          try {
+            const result = await analyzeDocument(workspaceId, file)
+            setItems((prev) => [{ kind: 'document', data: result }, ...prev])
+          } catch {
+            setError('문서 분석 중 오류가 발생했습니다.')
+          } finally {
+            setDocLoading(false)
+          }
         }
     }
 
@@ -204,16 +238,16 @@ flex-col items-center justify-center mb-3 overflow-hidden relative shrink-0`}>
                   캡처                                                                                           
               </button>
 
-              {/* PPT 업로드 */}
+              {/* 업로드 */}
               <label className={`flex items-center gap-1 ${btnSize} rounded-lg border border-border font-medium hover:bg-muted/60 transition-colors cursor-pointer`}>                                                                
                   <Upload size={compact ? 12 : 15} />
-                  {pptLoading ? '분석 중...' : 'PPT'}                                                              
+                  {pptLoading || isAnalyzing || docLoading ? '처리 중...' : '파일'}                                                              
                   <input                                                                                           
                       type="file"
-                      accept=".pptx,.ppt"                                                                          
+                      accept=".pptx,.ppt,.png,.jpg,.jpeg,.webp,.pdf,.docx,.doc,.xlsx,.xls,.html,.htm,.md"                                                                          
                       className="hidden"                                                                           
-                      onChange={handlePptUpload}
-                      disabled={pptLoading}                                                                        
+                      onChange={handleFileUpload}
+                      disabled={pptLoading || isAnalyzing || docLoading}                                                                        
                   />                                                                                             
               </label>
           </div>
@@ -229,6 +263,36 @@ flex-col items-center justify-center mb-3 overflow-hidden relative shrink-0`}>
                                                                                                                    
           <div className="flex-1 overflow-y-auto flex flex-col gap-2 min-h-0">                                     
               {items.map((item, idx) => {
+                  if (item.kind === 'document') {
+                    const d = item.data
+                    const time = new Date(d.timestmap).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit'})
+                    return (
+                      <div key={idx} className="p-2.5 rounded-lg border border-border bg-background shrink-0">
+                      <div className="flex items-start gap-2 mb-1.5">                                                      
+                          <div className="w-6 h-6 rounded bg-accent-subtle flex items-center justify-center shrink-0">   
+                              <FileText size={12} className="text-accent" />                                               
+                          </div>                                                                                           
+                          <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">                                    
+                                  <p className="text-mini font-medium text-foreground truncate">{d.title}</p>            
+                                  <span className="text-micro text-muted-foreground shrink-0">{time}</span>                
+                              </div>
+                              <p className="text-micro text-muted-foreground mt-0.5 line-clamp-3">{d.summary}</p>          
+                          </div>                                                                                           
+                      </div>
+                      {d.key_points.length > 0 && (                                                                        
+                          <div className="flex flex-col gap-0.5 pt-1.5 border-t border-border">                          
+                              {d.key_points.map((pt, i) => (                                                               
+                                  <div key={i} className="flex items-center gap-1">
+                                      <Sparkles size={10} className="text-accent" />                                       
+                                      <span className="text-micro text-accent">{pt}</span>                                 
+                                  </div>
+                              ))}                                                                                          
+                          </div>                                                                                         
+                      )}
+                      </div>
+                    )
+                  }
                   const isSlide = item.kind === 'slide'                                                            
                   const label = isSlide                                                                          
                       ? `슬라이드 ${(item.data as PptSlideResult).slide_number}`                                   
