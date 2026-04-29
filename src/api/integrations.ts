@@ -2,8 +2,7 @@
 import { apiFetch } from './client'
 
 export type ServiceName = 'jira' | 'slack' | 'notion' | 'google_calendar' | 'kakao'
-export type OAuthService = 'google_calendar' | 'slack' | 'notion'
-export type ApiKeyService = 'jira' | 'kakao'
+export type OAuthService = 'google_calendar' | 'slack' | 'jira'
 
 export interface IntegrationItem {
   id: number
@@ -19,11 +18,9 @@ export interface IntegrationListResponse {
   integrations: IntegrationItem[]
 }
 
-export interface JiraConnectBody {
-  domain: string        // company.atlassian.net
-  email: string         // Atlassian 계정 이메일
-  api_token: string     // Atlassian API Token
-  project_key: string   // 예: PROJ
+export interface JiraProject {
+  key: string
+  name: string
 }
 
 // --- 목록 조회 ---
@@ -31,11 +28,11 @@ export function getIntegrations(workspaceId: number) {
   return apiFetch<IntegrationListResponse>(`/integrations/workspaces/${workspaceId}`)
 }
 
-// --- OAuth 방식 (Google / Slack / Notion) ---
+// --- OAuth 방식 (Google / Slack / JIRA) ---
 const OAUTH_PATHS: Record<OAuthService, string> = {
   google_calendar: 'google',
   slack: 'slack',
-  notion: 'notion',
+  jira: 'jira',
 }
 
 export function getOAuthUrl(service: OAuthService, workspaceId: number) {
@@ -44,19 +41,30 @@ export function getOAuthUrl(service: OAuthService, workspaceId: number) {
   )
 }
 
-// --- API Key 방식 (JIRA) ---
-export function connectJira(workspaceId: number, body: JiraConnectBody) {
-  return apiFetch<IntegrationItem>(
-    `/integrations/workspaces/${workspaceId}/jira/connect`,
-    { method: 'POST', body: JSON.stringify(body) }
+// --- JIRA OAuth 후속 설정 ---
+export function getJiraProjects(workspaceId: number) {
+  return apiFetch<{ projects: JiraProject[] }>(
+    `/integrations/workspaces/${workspaceId}/jira/projects`
   )
 }
 
-// --- API Key 방식 (카카오) ---
-export function connectKakao(workspaceId: number, apiKey: string) {
-  return apiFetch<IntegrationItem>(
-    `/integrations/workspaces/${workspaceId}/kakao/connect`,
-    { method: 'POST', body: JSON.stringify({ api_key: apiKey }) }
+export function saveJiraProject(workspaceId: number, projectKey: string) {
+  return apiFetch<{ status: string }>(
+    `/integrations/workspaces/${workspaceId}/jira/project/select`,
+    { method: 'POST', body: JSON.stringify({ project_key: projectKey }) }
+  )
+}
+
+export function getJiraStatuses(workspaceId: number) {
+  return apiFetch<{ statuses: string[] }>(
+    `/integrations/workspaces/${workspaceId}/jira/statuses`
+  )
+}
+
+export function saveJiraMapping(workspaceId: number, statusMapping: Record<string, string>) {
+  return apiFetch<{ status: string }>(
+    `/integrations/workspaces/${workspaceId}/jira/mapping`,
+    { method: 'POST', body: JSON.stringify({ status_mapping: statusMapping }) }
   )
 }
 
