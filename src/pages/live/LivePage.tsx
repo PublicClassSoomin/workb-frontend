@@ -19,21 +19,20 @@ import {
   CheckCircle,
   AlertCircle,
   UserPlus,
+  Image as ImageIcon,
   X,
 } from "lucide-react";
 import clsx from "clsx";
 import { MEETINGS, PARTICIPANTS } from "../../data/mockData";
 import { useLiveSTT } from "../../hooks/useLiveSTT";
 import LiveScreenPage from "../../pages/live/LiveScreenPage";
-import { LIVE_TRANSCRIPT } from "../../data/mockTranscript";
-import { readMeetingSnapshotForRoute } from "../../utils/meetingRoutes";
-import type { Meeting } from "../../types/meeting";
+import LiveImagePanel from "./LiveImagePanel";
 import { endWorkspaceMeeting } from "../../api/meetings";
 import { getCurrentWorkspaceId } from "../../utils/workspace";
 
 // ── Panel types ───────────────────────────────────────────────────────────
 type MainPanel = "decisions" | "actions" | "chat";
-type AuxPanel = "search" | "screen" | "speakers" | null;
+type AuxPanel = "search" | "screen" | "speakers" | "image" | null;
 
 // ── Search mock data ──────────────────────────────────────────────────────
 type SearchSource = "all" | "web" | "db" | "history";
@@ -121,6 +120,21 @@ function speakerMeta(speaker: string | number): {
   };
 }
 
+// ── Device storage ────────────────────────────────────────────────────────
+const DEVICE_STORAGE_KEY = "workb-device-settings";
+
+function getSelectedCameraId(): string | null {
+  try {
+    const raw = localStorage.getItem(DEVICE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { selectedCameraId?: string };
+    const id = parsed?.selectedCameraId;
+    return typeof id === "string" && id.trim() ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 type PanelItem = {
   id: string;
@@ -147,6 +161,9 @@ export default function LivePage() {
 
   // Controls
   const [camOn, setCamOn] = useState(false);
+  const [cameraError, setCameraError] = useState<string>("");
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
   // Main right panel (decisions / actions / chat)
   const [mainPanel, setMainPanel] = useState<MainPanel>("decisions");
@@ -206,6 +223,52 @@ export default function LivePage() {
   function assignSpeaker(speakerId: string, participantId: string) {
     setSpeakerAssignments((prev) => ({ ...prev, [speakerId]: participantId }));
   }
+
+  useEffect(() => {
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError("이 브라우저에서는 웹캠을 지원하지 않습니다.");
+        return;
+      }
+      setCameraError("");
+      const selectedCameraId = getSelectedCameraId();
+      try {
+        cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+        cameraStreamRef.current = null;
+        setCameraStream(null);
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: selectedCameraId
+            ? { deviceId: { exact: selectedCameraId } }
+            : true,
+        });
+        cameraStreamRef.current = stream;
+        setCameraStream(stream);
+      } catch (e) {
+        setCameraError(
+          e instanceof Error ? e.message : "웹캠을 켤 수 없습니다.",
+        );
+        cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+        cameraStreamRef.current = null;
+        setCameraStream(null);
+      }
+    }
+
+    function stopCamera() {
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+      setCameraStream(null);
+      setCameraError("");
+    }
+
+    if (camOn) void startCamera();
+    else stopCamera();
+
+    return () => {
+      stopCamera();
+    };
+  }, [camOn]);
 
   // ── Panel content renderers ──────────────────────────────────────────
   function renderMainPanelContent() {
@@ -547,6 +610,30 @@ export default function LivePage() {
       );
     }
 
+    if (auxPanel === "image") {
+      return (
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <p className="text-sm font-semibold text-foreground">이미지</p>
+            <button
+              onClick={() => setAuxPanel(null)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="닫기"
+            >
+              <X size={15} />
+            </button>
+          </div>
+          <LiveImagePanel
+            workspaceId={getCurrentWorkspaceId()}
+            meetingId={Number(meetingId)}
+            camOn={camOn}
+            stream={cameraStream}
+            cameraError={cameraError}
+          />
+        </div>
+      );
+    }
+
     return null;
   }
 
@@ -622,6 +709,12 @@ export default function LivePage() {
                 label: "화자",
                 Icon: Users,
                 title: "화자 등록 · 확인",
+              },
+              {
+                id: "image" as const,
+                label: "이미지",
+                Icon: ImageIcon,
+                title: "웹캠 캡처",
               },
             ].map(({ id, label, Icon, title }) => (
               <button
