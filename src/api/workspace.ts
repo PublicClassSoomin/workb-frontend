@@ -47,6 +47,14 @@ export interface InviteCodeValidateResponse {
   workspace_name: string
 }
 
+export interface WorkspaceJoinResponse {
+  success: boolean
+  workspace_id: number
+  workspace_name: string
+  role: UserRole
+  message: string
+}
+
 export interface WorkspaceInviteEmailItem {
   email: string
   role: UserRole
@@ -80,6 +88,13 @@ export async function issueInviteCode(workspaceId: number): Promise<InviteCodeIs
 
 export function validateInviteCode(inviteCode: string): Promise<InviteCodeValidateResponse> {
   return apiRequest<InviteCodeValidateResponse>('/workspaces/invite-codes/validate', {
+    method: 'POST',
+    body: JSON.stringify({ invite_code: inviteCode }),
+  })
+}
+
+export function joinWorkspaceByInviteCode(inviteCode: string): Promise<WorkspaceJoinResponse> {
+  return apiRequest<WorkspaceJoinResponse>('/workspaces/join', {
     method: 'POST',
     body: JSON.stringify({ invite_code: inviteCode }),
   })
