@@ -98,3 +98,16 @@ export async function analyzeDocument(workspaceId: number, file: File): Promise<
         { method: 'POST', body: form }
     )
 }
+
+export async function generateQuickReport(
+    workspaceId: number,
+    meetingId: number,
+): Promise<void> {
+    await apiRequest(
+        `/knowledges/workspace/${workspaceId}/chatbot/quick_report`,
+        {
+            method: 'POST',
+            body: JSON.stringify({ meeting_id: meetingId }),
+        },
+    )
+}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Mic, MicOff, Camera, CameraOff, Square,
-  Monitor, Image as ImageIcon, MessageSquare, CheckSquare, Zap,
+  Monitor, Image as ImageIcon, CheckSquare, Zap,
   X,
 } from 'lucide-react'
 import LiveScreenPage from '../../pages/live/LiveScreenPage'
@@ -15,6 +15,7 @@ import { readMeetingSnapshotForRoute } from '../../utils/meetingRoutes'
 import type { Meeting } from '../../types/meeting'
 import { endWorkspaceMeeting } from '../../api/meetings'
 import { getCurrentWorkspaceId } from '../../utils/workspace'
+import { generateQuickReport } from '../../api/chatbot'
 
 // ── Panel types ───────────────────────────────────────────────────────────
 type MainPanel = 'decisions' | 'actions'
@@ -258,6 +259,7 @@ export default function LivePage() {
                 const numericId = Number(meetingId)
                 if (Number.isFinite(numericId) && numericId > 0) {
                   endWorkspaceMeeting(wsid, numericId)
+                  generateQuickReport(wsid, numericId).catch(() => {})
                     .catch(() => {
                       // 실패해도 회의록 화면으로 이동은 허용
                     })
