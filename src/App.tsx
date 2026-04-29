@@ -8,6 +8,7 @@ import { PublicOnlyRoute, RequireAdminRoute, RequireAuthRoute } from './componen
 
 // Auth pages
 import LoginPage from './pages/auth/LoginPage'
+import OAuthCallbackPage from './pages/auth/OAuthCallbackPage'
 import SignupAdminPage from './pages/auth/SignupAdminPage'
 import SignupMemberPage from './pages/auth/SignupMemberPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
@@ -55,6 +56,7 @@ export default function App() {
         <Route element={<PublicOnlyRoute />}>
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
             <Route path="/signup/admin" element={<SignupAdminPage />} />
             <Route path="/signup/member" element={<SignupMemberPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -105,6 +107,7 @@ export default function App() {
 
           {/* 회의: 사후 */}
           <Route path="meetings/post" element={<MeetingSelectPage />} />
+          <Route path="meetings/wbs-select" element={<MeetingSelectPage />} />
           <Route path="meetings/:meetingId/notes" element={<NotesPage />} />
           <Route path="meetings/:meetingId/notes/edit" element={<NotesEditPage />} />
           <Route path="meetings/:meetingId/wbs" element={<WbsPage />} />

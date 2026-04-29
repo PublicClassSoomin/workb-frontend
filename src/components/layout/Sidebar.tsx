@@ -33,7 +33,10 @@ import {
   getCurrentWorkspaceId,
   setCurrentWorkspaceId,
   setCurrentWorkspaceRole,
+  WORKSPACE_CHANGED_EVENT,
 } from "../../utils/workspace";
+import { useWorkspaceLogo } from "../../utils/workspaceLogo";
+import { useProfileImage } from "../../utils/profileImage";
 import {
   fetchMyWorkspaces,
   type WorkspaceListItem,
@@ -83,6 +86,7 @@ interface WorkspaceSelectorProps {
 
 function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentId, setCurrentId] = useState<number>(() =>
     getCurrentWorkspaceId()
@@ -91,6 +95,7 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listId = useId();
+  const profileImage = useProfileImage(user?.id);
 
   const current = useMemo(
     () => workspaces.find((w) => w.id === currentId) ?? workspaces[0],
@@ -171,16 +176,35 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
     );
   }
 
+  function renderWorkspaceAvatar(ws: Workspace, size: "sm" | "md") {
+    const sizeClass = size === "sm" ? "w-5 h-5 text-[10px]" : "w-6 h-6 text-xs";
+
+    if (profileImage) {
+      return (
+        <img
+          src={profileImage}
+          alt={user?.name ?? ws.name}
+          className={clsx(sizeClass, "rounded object-cover shrink-0")}
+        />
+      );
+    }
+
+    return (
+      <span
+        className={clsx(
+          sizeClass,
+          "rounded flex items-center justify-center text-white font-bold shrink-0"
+        )}
+        style={{ backgroundColor: ws.color }}
+        aria-hidden="true"
+      >
+        {ws.initial}
+      </span>
+    );
+  }
+
   // 아이콘(아바타)은 collapsed 상태에서도 표시
-  const avatar = (
-    <span
-      className="w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold shrink-0"
-      style={{ backgroundColor: current.color }}
-      aria-hidden="true"
-    >
-      {current.initial}
-    </span>
-  );
+  const avatar = renderWorkspaceAvatar(current, "md");
 
   if (collapsed) {
     return (
@@ -239,17 +263,7 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
                       : "text-foreground hover:bg-muted"
                   )}
                 >
-                  <span
-                    className="w-5 h-5 rounded flex items-center justify-center text-white shrink-0"
-                    style={{
-                      backgroundColor: ws.color,
-                      fontSize: "10px",
-                      fontWeight: 700,
-                    }}
-                    aria-hidden="true"
-                  >
-                    {ws.initial}
-                  </span>
+                  {renderWorkspaceAvatar(ws, "sm")}
                   <span className="flex-1 truncate text-left">{ws.name}</span>
                   {isSelected && (
                     <Check
@@ -302,7 +316,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "회의 후",
     items: [
       { to: "/meetings/post", label: "회의록 · 보고서", icon: FileText },
-      { to: "/meetings/3/wbs", label: "WBS · 태스크", icon: ListTodo },
+      { to: "/meetings/wbs-select", label: "WBS · 태스크", icon: ListTodo },
     ],
   },
   {
@@ -351,8 +365,21 @@ export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
 }: SidebarProps) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const settingsPath = "/settings/my";
+  const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId());
+  const workspaceLogoUrl = useWorkspaceLogo(workspaceId);
+  const profileImage = useProfileImage(user?.id);
+
+  useEffect(() => {
+    function handleWorkspaceChanged(event: Event) {
+      const nextId = (event as CustomEvent<{ id: number }>).detail?.id;
+      if (Number.isFinite(nextId) && nextId > 0) setWorkspaceId(nextId);
+    }
+
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
+    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
+  }, []);
 
   // 모바일: ESC로 닫기
   useEffect(() => {
@@ -409,7 +436,7 @@ export default function Sidebar({
                   aria-label="홈으로 이동"
                 >
                   <img
-                    src="/brand/workb-logo.png"
+                    src={workspaceLogoUrl}
                     alt="Workb 로고"
                     className="w-6 h-6 rounded object-cover shrink-0"
                   />
@@ -426,7 +453,7 @@ export default function Sidebar({
                 tabIndex={-1}
               >
                 <img
-                  src="/brand/workb-logo.png"
+                  src={workspaceLogoUrl}
                   alt="Workb 로고"
                   className="w-6 h-6 rounded object-cover"
                 />
@@ -569,7 +596,15 @@ export default function Sidebar({
                 )
               }
             >
-              <UserRound size={15} className="shrink-0" aria-hidden="true" />
+              {profileImage ? (
+                <img
+                  src={profileImage}
+                  alt={user?.name ?? "마이페이지"}
+                  className="w-[15px] h-[15px] rounded-full object-cover shrink-0"
+                />
+              ) : (
+                <UserRound size={15} className="shrink-0" aria-hidden="true" />
+              )}
               {!collapsed && <span className="flex-1">마이페이지</span>}
             </NavLink>
           </Tooltip>

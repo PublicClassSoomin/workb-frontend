@@ -183,6 +183,9 @@ export default function IntegrationsSettingsPage() {
             slackSelectedChannelId={item.service === 'slack' ? item.selected_channel_id : undefined}
             channelLoading={item.service === 'slack' ? channelLoading : false}
             onChannelChange={(channelId) => saveSlackChannel(workspaceId, channelId).catch(console.error)}
+            selectedCalendarId={item.service === 'google_calendar' ? item.selected_calendar_id : undefined}
+            selectedCalendarName={item.service === 'google_calendar' ? item.selected_calendar_name : undefined}
+            onCalendarChange={openGoogleCalendarPicker}
           />
         ))}
       </div>
@@ -232,9 +235,8 @@ export default function IntegrationsSettingsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
             <h2 className="text-base font-semibold text-foreground mb-1">Google Calendar 선택</h2>
-            <p className="text-mini text-muted-foreground mb-4">
-              워크스페이스에서 사용할 캘린더를 선택하거나 새로 생성하세요.
-            </p>
+            <p className="text-mini text-muted-foreground mb-2">워크스페이스에서 사용할 캘린더를 선택하거나 새로 생성하세요.</p>
+            <p className="text-mini text-amber-600 dark:text-amber-400 mb-4">⚠️ 한 번 선택한 캘린더는 신중하게 변경해야 합니다. 기존에 등록된 일정은 이전 캘린더에 그대로 남습니다.</p>
 
             <div className="mb-4">
               <p className="text-mini text-muted-foreground mb-1.5">새 캘린더 생성</p>
@@ -254,7 +256,7 @@ export default function IntegrationsSettingsPage() {
                     setGoogleLoading(true)
                     try {
                       const created = await createGoogleCalendar(workspaceId, name)
-                      await selectGoogleCalendar(workspaceId, created.calendar_id)
+                      await selectGoogleCalendar(workspaceId, created.calendar_id, created.summary || name)
                       setSuccessMessage('캘린더가 생성/선택되었습니다.')
                       setTimeout(() => setSuccessMessage(null), 3000)
                       setGoogleCalendarModalOpen(false)
@@ -288,7 +290,7 @@ export default function IntegrationsSettingsPage() {
                       onClick={async () => {
                         setGoogleLoading(true)
                         try {
-                          await selectGoogleCalendar(workspaceId, c.id)
+                          await selectGoogleCalendar(workspaceId, c.id, c.summary)
                           setSuccessMessage('캘린더가 선택되었습니다.')
                           setTimeout(() => setSuccessMessage(null), 3000)
                           setGoogleCalendarModalOpen(false)
@@ -336,6 +338,9 @@ function IntegrationCard({
   slackSelectedChannelId,
   channelLoading,
   onChannelChange,
+  selectedCalendarId,
+  selectedCalendarName,
+  onCalendarChange,
 }: {
   item: IntegrationItem
   onConnect: () => void
@@ -344,6 +349,9 @@ function IntegrationCard({
   slackSelectedChannelId?: string
   channelLoading?: boolean
   onChannelChange?: (channelId: string) => void
+  selectedCalendarId?: string
+  selectedCalendarName?: string
+  onCalendarChange?: () => void
 }) {
   const meta = SERVICE_META[item.service]
   const isConnected = item.is_connected
@@ -379,6 +387,32 @@ function IntegrationCard({
                 <option key={channel.id} value={channel.id}>#{channel.name}</option>
               ))}
             </select>
+          )}
+        </div>
+      )}
+
+      {item.service === 'google_calendar' && isConnected && (
+        <div className="mb-3 pt-3 border-t border-border">
+          <p className="text-mini text-muted-foreground mb-1.5">사용 중인 캘린더</p>
+          {selectedCalendarId ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-foreground truncate">{selectedCalendarName || selectedCalendarId}</span>
+              <button
+                onClick={() => {
+                  if (confirm('기존 등록된 일정은 이전 캘린더에 그대로 남습니다.\n정말 변경하시겠습니까?')) {
+                    onCalendarChange?.()
+                  }
+                }}
+                className="text-mini text-muted-foreground hover:text-accent transition-colors shrink-0"
+              >
+                변경 ⚠️
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-mini text-amber-600 dark:text-amber-400">캘린더가 선택되지 않았습니다.</span>
+              <button onClick={onCalendarChange} className="text-mini text-accent transition-colors shrink-0">선택</button>
+            </div>
           )}
         </div>
       )}

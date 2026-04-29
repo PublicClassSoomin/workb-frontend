@@ -4,6 +4,12 @@ import { Image as ImageIcon, Save, Trash2, Upload, X } from "lucide-react";
 import { getCurrentWorkspaceId } from "../../api/client";
 import { deleteWorkspace, getWorkspace, updateWorkspace } from "../../api/workspace";
 import { useAuth } from "../../context/AuthContext";
+import {
+  DEFAULT_WORKSPACE_LOGO_URL,
+  clearWorkspaceLogoUrl,
+  getWorkspaceLogoUrl,
+  setWorkspaceLogoUrl,
+} from "../../utils/workspaceLogo";
 
 const SUMMARY_STYLES = [
   "간결형 (결정사항·액션아이템 중심)",
@@ -12,12 +18,7 @@ const SUMMARY_STYLES = [
   "커스텀",
 ];
 const LANGUAGES = ["한국어", "English", "日本語", "中文"];
-const DEFAULT_LOGO_URL = "/brand/workb-logo.png";
 const MAX_LOGO_SIZE = 1024 * 1024;
-
-function getLocalLogoKey(workspaceId: number): string {
-  return `workb-workspace-logo-${workspaceId}`;
-}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -35,7 +36,7 @@ export default function WorkspaceSettingsPage() {
   const [industry, setIndustry] = useState("");
   const [language, setLanguage] = useState("한국어");
   const [summaryStyle, setSummaryStyle] = useState(SUMMARY_STYLES[0]);
-  const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
+  const [logoUrl, setLogoUrl] = useState(DEFAULT_WORKSPACE_LOGO_URL);
   const [logoFileName, setLogoFileName] = useState("");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -58,11 +59,10 @@ export default function WorkspaceSettingsPage() {
         setIndustry(workspace.industry ?? "");
         setLanguage(workspace.default_language ?? "한국어");
         setSummaryStyle(workspace.summary_style ?? SUMMARY_STYLES[0]);
-        setLogoUrl(
-          localStorage.getItem(getLocalLogoKey(workspaceId)) ??
-            workspace.logo_url ??
-            DEFAULT_LOGO_URL
-        );
+        if (workspace.logo_url) {
+          setWorkspaceLogoUrl(workspaceId, workspace.logo_url);
+        }
+        setLogoUrl(workspace.logo_url ?? getWorkspaceLogoUrl(workspaceId));
       } catch (err) {
         if (!active) return;
         setError(
@@ -111,9 +111,9 @@ export default function WorkspaceSettingsPage() {
   }
 
   function resetLogo() {
-    setLogoUrl(DEFAULT_LOGO_URL);
+    setLogoUrl(DEFAULT_WORKSPACE_LOGO_URL);
     setLogoFileName("");
-    localStorage.removeItem(getLocalLogoKey(workspaceId));
+    clearWorkspaceLogoUrl(workspaceId);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -131,20 +131,16 @@ export default function WorkspaceSettingsPage() {
         logo_url: isLocalUpload ? null : logoUrl || null,
       });
       if (isLocalUpload) {
-        localStorage.setItem(getLocalLogoKey(workspaceId), logoUrl);
+        setWorkspaceLogoUrl(workspaceId, logoUrl);
       } else {
-        localStorage.removeItem(getLocalLogoKey(workspaceId));
+        setWorkspaceLogoUrl(workspaceId, workspace.logo_url);
       }
 
       setTeamName(workspace.name);
       setIndustry(workspace.industry ?? "");
       setLanguage(workspace.default_language ?? "한국어");
       setSummaryStyle(workspace.summary_style ?? SUMMARY_STYLES[0]);
-      setLogoUrl(
-        localStorage.getItem(getLocalLogoKey(workspaceId)) ??
-          workspace.logo_url ??
-          DEFAULT_LOGO_URL
-      );
+      setLogoUrl(isLocalUpload ? logoUrl : workspace.logo_url ?? DEFAULT_WORKSPACE_LOGO_URL);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -173,7 +169,7 @@ export default function WorkspaceSettingsPage() {
 
     try {
       await deleteWorkspace(workspaceId);
-      localStorage.removeItem(getLocalLogoKey(workspaceId));
+      clearWorkspaceLogoUrl(workspaceId);
       await signOut();
       navigate("/login", { replace: true });
     } catch (err) {
