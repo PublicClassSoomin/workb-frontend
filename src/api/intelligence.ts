@@ -68,3 +68,24 @@ export async function updateUtteranceContent(
     { method: "PATCH", body: JSON.stringify({ seq, content }) },
   );
 }
+
+export interface MeetingStatusData {
+  meeting_id: number;
+  status: string;
+  is_done: boolean;
+}
+
+interface MeetingStatusResponseBody {
+  success: boolean;
+  data: MeetingStatusData;
+  message?: string;
+}
+
+export async function checkMeetingStatus(
+  meetingId: string | number,
+): Promise<MeetingStatusData> {
+  const body = await apiRequest<MeetingStatusResponseBody>(
+    `/intelligences/meetings/${meetingId}/status`,
+  );
+  return body.data;
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { checkMeetingStatus } from "../api/intelligence";
 
 export type WsStatus =
   | "idle"
@@ -91,6 +92,24 @@ export function useLiveSTT(meetingId: string) {
     async function connect() {
       setWsStatus("connecting");
       setErrorMsg(null);
+
+      // 0. 회의 상태 사전 체크 — done임이 확실할 때만 연결 차단 (fail-open)
+      try {
+        const statusData = await checkMeetingStatus(meetingId);
+        if (statusData.is_done) {
+          setWsStatus("done");
+          setErrorMsg(
+            "이미 종료된 회의입니다. 회의록 페이지에서 내용을 확인하세요.",
+          );
+          return;
+        }
+      } catch {
+        // 상태 조회 실패(네트워크 오류, 인증 만료 등) → 연결은 계속 진행
+        // WebSocket 서버에서 최종 유효성 검증을 수행하므로 여기서 차단하지 않음
+        console.warn(
+          "[useLiveSTT] 회의 상태 사전 확인 실패 — WebSocket 연결을 계속 시도합니다.",
+        );
+      }
 
       // 1. 마이크 권한 요청
       let stream: MediaStream;
@@ -202,6 +221,11 @@ export function useLiveSTT(meetingId: string) {
         if (e.code === 4004) {
           setWsStatus("error");
           setErrorMsg("회의를 찾을 수 없습니다. (4004)");
+        } else if (e.code === 4009) {
+          setWsStatus("done");
+          setErrorMsg(
+            "이미 종료된 회의입니다. 회의록 페이지에서 내용을 확인하세요.",
+          );
         } else if (e.code !== 1000 && e.code !== 1001) {
           setWsStatus("error");
           setErrorMsg(`연결이 끊어졌습니다. (코드: ${e.code})`);

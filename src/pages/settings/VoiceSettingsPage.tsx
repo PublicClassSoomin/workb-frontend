@@ -10,6 +10,16 @@ import { useAuth } from "../../context/AuthContext";
 
 const TARGET_SAMPLE_RATE = 16000;
 
+const ASR_BASE = (() => {
+  const raw =
+    (import.meta.env.VITE_ASR_SERVER as string | undefined) ??
+    "http://localhost:8888";
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+})();
+
 const WORKLET_CODE = `
 class PCMCapture extends AudioWorkletProcessor {
   process(inputs) {
@@ -124,13 +134,10 @@ export default function VoiceSettingsPage() {
         "recording.wav",
       );
 
-      const response = await fetch(
-        `http://localhost:8888/meeting/embedding/${userId}`,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
+      const response = await fetch(`${ASR_BASE}/meeting/embedding/${userId}`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
         const text = await response.text();
