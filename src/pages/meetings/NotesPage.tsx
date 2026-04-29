@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Edit2,
   Share2,
@@ -12,6 +12,9 @@ import {
   X,
   Check,
   Pencil,
+  Play,
+  Pause,
+  Square,
 } from "lucide-react";
 import { MEETINGS } from "../../data/mockData";
 import { readMeetingSnapshotForRoute } from "../../utils/meetingRoutes";
@@ -103,6 +106,103 @@ export default function NotesPage() {
   const [utterances, setUtterances] = useState<UtteranceItem[]>([]);
   const [utterancesLoading, setUtterancesLoading] = useState(true);
   const [utterancesError, setUtterancesError] = useState<string | null>(null);
+
+  // 오디오 구간 재생
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingSeq, setPlayingSeq] = useState<number | null>(null);
+
+  // 전체 오디오 재생
+  const fullAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [fullPlaying, setFullPlaying] = useState(false);
+  const [fullCurrentTime, setFullCurrentTime] = useState(0);
+  const [fullDuration, setFullDuration] = useState(0);
+
+  const ASR_BASE =
+    (import.meta.env.VITE_ASR_SERVER as string | undefined) ??
+    "http://localhost:8888";
+
+  function playUtterance(u: UtteranceItem) {
+    const audioUrl = `${ASR_BASE}/meeting/${meetingId}/audio`;
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audioRef.current = audio;
+    }
+    // 재생 중인 항목 클릭 → 정지
+    if (playingSeq === u.seq) {
+      audio.pause();
+      setPlayingSeq(null);
+      return;
+    }
+    // 전체 재생 중이면 정지
+    if (fullPlaying) {
+      fullAudioRef.current?.pause();
+      setFullPlaying(false);
+    }
+    if (audio.src !== audioUrl) {
+      audio.src = audioUrl;
+    }
+    audio.ontimeupdate = () => {
+      if (audio!.currentTime >= u.end) {
+        audio!.pause();
+        setPlayingSeq(null);
+      }
+    };
+    audio.onended = () => setPlayingSeq(null);
+    audio.currentTime = u.start;
+    audio.play().catch(() => setPlayingSeq(null));
+    setPlayingSeq(u.seq);
+  }
+
+  // 전체 오디오 초기화
+  useEffect(() => {
+    const audio = new Audio();
+    audio.src = `${ASR_BASE}/meeting/${meetingId}/audio`;
+    audio.preload = "metadata";
+    fullAudioRef.current = audio;
+    const onMeta = () => setFullDuration(audio.duration);
+    const onTime = () => setFullCurrentTime(audio.currentTime);
+    const onEnded = () => setFullPlaying(false);
+    audio.addEventListener("loadedmetadata", onMeta);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    return () => {
+      audio.removeEventListener("loadedmetadata", onMeta);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+      audio.pause();
+      audio.src = "";
+    };
+  }, [meetingId, ASR_BASE]);
+
+  function toggleFullAudio() {
+    const audio = fullAudioRef.current;
+    if (!audio) return;
+    if (fullPlaying) {
+      audio.pause();
+      setFullPlaying(false);
+    } else {
+      // 구간 재생 중이면 정지
+      audioRef.current?.pause();
+      setPlayingSeq(null);
+      audio.play().catch(() => setFullPlaying(false));
+      setFullPlaying(true);
+    }
+  }
+
+  function seekFullAudio(e: React.MouseEvent<HTMLDivElement>) {
+    const audio = fullAudioRef.current;
+    if (!audio || !fullDuration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    audio.currentTime = ((e.clientX - rect.left) / rect.width) * fullDuration;
+  }
+
+  // 언마운트 시 오디오 정리
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+    };
+  }, []);
 
   // 워크스페이스 멤버
   const [members, setMembers] = useState<WorkspaceMemberApiItem[]>([]);
@@ -602,6 +702,42 @@ export default function NotesPage() {
             )}
           </div>
 
+          {/* 전체 오디오 플레이어 */}
+          {!utterancesLoading && !utterancesError && utterances.length > 0 && (
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border bg-muted/20 mb-3">
+              <button
+                type="button"
+                onClick={toggleFullAudio}
+                className="w-6 h-6 rounded-full flex items-center justify-center bg-accent/10 hover:bg-accent/20 text-accent transition-colors shrink-0"
+                title={fullPlaying ? "일시정지" : "전체 재생"}
+              >
+                {fullPlaying ? (
+                  <Pause size={11} className="fill-current" />
+                ) : (
+                  <Play size={11} className="fill-current" />
+                )}
+              </button>
+              <span className="text-micro text-muted-foreground shrink-0 w-10 text-right tabular-nums">
+                {formatTime(fullCurrentTime)}
+              </span>
+              <div
+                className="flex-1 h-1.5 bg-muted rounded-full cursor-pointer relative overflow-hidden"
+                onClick={seekFullAudio}
+                title="클릭해서 이동"
+              >
+                <div
+                  className="absolute left-0 top-0 h-full bg-accent rounded-full"
+                  style={{
+                    width: `${fullDuration ? (fullCurrentTime / fullDuration) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              <span className="text-micro text-muted-foreground shrink-0 w-10 tabular-nums">
+                {fullDuration ? formatTime(fullDuration) : "--:--"}
+              </span>
+            </div>
+          )}
+
           {/* 수정 모드 안내 배너 */}
           {isEditMode && !utterancesLoading && utterances.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-accent bg-accent/10 border border-accent/20 rounded-lg px-3 py-2 mb-3">
@@ -636,9 +772,19 @@ export default function NotesPage() {
               {utterances.map((u) => {
                 const color = getSpeakerColor(u.speaker_label);
                 const initial = u.speaker_label.trim()[0] ?? "?";
-
+                const isPlaying = playingSeq === u.seq;
+                const isActive =
+                  fullPlaying &&
+                  fullCurrentTime >= u.start &&
+                  fullCurrentTime < u.end;
                 return (
-                  <div key={u.seq} className="flex gap-3 group">
+                  <div
+                    key={u.seq}
+                    className={[
+                      "flex gap-3 group rounded-lg px-2 -mx-2 transition-colors",
+                      isActive ? "bg-accent/10 ring-1 ring-accent/20" : "",
+                    ].join(" ")}
+                  >
                     <div
                       className="w-7 h-7 rounded-full flex items-center justify-center text-white text-mini font-bold shrink-0 mt-0.5"
                       style={{ backgroundColor: color }}
@@ -669,6 +815,27 @@ export default function NotesPage() {
                         <span className="text-mini text-muted-foreground">
                           {formatTime(u.start)}
                         </span>
+                        {/* 구간 재생 버튼 — 수정 모드가 아닐 때만 표시 */}
+                        {!isEditMode && (
+                          <button
+                            type="button"
+                            onClick={() => playUtterance(u)}
+                            className={[
+                              "opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 h-5 px-1.5 rounded text-micro font-medium",
+                              isPlaying
+                                ? "opacity-100 bg-accent/15 text-accent border border-accent/30"
+                                : "bg-muted/60 text-muted-foreground hover:text-foreground border border-transparent hover:border-border",
+                            ].join(" ")}
+                            title={isPlaying ? "정지" : "이 구간 재생"}
+                          >
+                            {isPlaying ? (
+                              <Square size={9} className="fill-current" />
+                            ) : (
+                              <Play size={9} className="fill-current" />
+                            )}
+                            {isPlaying ? "정지" : "재생"}
+                          </button>
+                        )}
                       </div>
                       {/* 발화 텍스트 — 수정 모드일 때만 인라인 편집 */}
                       {isEditMode && editingSeq === u.seq ? (

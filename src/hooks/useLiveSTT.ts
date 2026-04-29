@@ -24,7 +24,8 @@ interface STTMessage {
   diarization?: DiarizationSegment[];
 }
 
-const WS_BASE = "ws://localhost:8888";
+const WS_BASE =
+  (import.meta.env.VITE_WS_BASE as string | undefined) ?? "ws://localhost:8888";
 
 const TARGET_SAMPLE_RATE = 16000;
 /** 2초 분량의 청크 크기: 16000 Hz × 2s */
