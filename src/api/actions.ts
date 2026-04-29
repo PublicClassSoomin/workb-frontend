@@ -32,10 +32,11 @@ export function exportGoogleCalendar(meetingId: string | number, workspaceId: nu
 
 export function suggestNextMeeting(
   meetingId: string | number,
+  workspaceId: number,
   body: { duration_minutes?: number } = {},
 ) {
   return apiFetch<{ slots: TimeSlot[] }>(
-    `/actions/meetings/${meetingId}/next-meeting/suggest`,
+    `/actions/meetings/${meetingId}/next-meeting/suggest?workspace_id=${workspaceId}`,
     { method: 'POST', body: JSON.stringify(body) },
   )
 }
@@ -50,6 +51,41 @@ export function registerNextMeeting(
     { method: 'POST', body: JSON.stringify(body) },
   )
 }
+
+/**
+ * 다음 회의 일정 수정 (구글 캘린더 연동 등)
+ */
+export function updateNextMeeting(
+  meetingId: string | number,
+  workspaceId: number,
+  eventId: string,
+  body: { title?: string; scheduled_at?: string },
+) {
+  return apiFetch<{ event_id: string }>(
+    `/actions/meetings/${meetingId}/next-meeting/${eventId}?workspace_id=${workspaceId}`,
+    { 
+      method: 'PATCH', 
+      body: JSON.stringify(body) 
+    },
+  );
+}
+
+/**
+ * 다음 회의 일정 삭제
+ */
+export function deleteNextMeeting(
+  meetingId: string | number,
+  workspaceId: number,
+  eventId: string,
+) {
+  return apiFetch<{ status: string }>(
+    `/actions/meetings/${meetingId}/next-meeting/${eventId}?workspace_id=${workspaceId}`,
+    { 
+      method: 'DELETE' 
+    },
+  );
+}
+
 
 // ── 회의록 ────────────────────────────────────────────────────────────
 export interface MinutesResponse {

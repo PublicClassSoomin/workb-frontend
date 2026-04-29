@@ -12,7 +12,9 @@ import {
   generateMinutes, getMinutes,
   generateReport, getReports, downloadReport,
   exportSlack, exportGoogleCalendar,
-  type MinutesResponse, type ReportItem,
+  suggestNextMeeting, registerNextMeeting, updateNextMeeting,
+  deleteNextMeeting,
+  type MinutesResponse, type ReportItem, type TimeSlot,
 } from '../../api/actions'
 import { getIntegrations, type ServiceName } from '../../api/integrations'
 
@@ -389,7 +391,13 @@ function ReportsTab({
                 key={report.id}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card"
               >
-                <span className="text-micro font-bold px-1.5 py-0.5 rounded-md bg-accent/10 text-accent uppercase shrink-0">
+                <span className={clsx(
+                  "text-micro font-bold px-1.5 py-0.5 rounded-md uppercase shrink-0",
+                  report.format === 'markdown' && 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                  report.format === 'html' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                  report.format === 'wbs' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                  report.format === 'excel' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                )}>
                   {report.format}
                 </span>
                 <span className="flex-1 text-sm text-foreground truncate">{report.title}</span>
@@ -431,6 +439,12 @@ function ExportTab({
   const [integrations, setIntegrations] = useState<{ service: ServiceName; is_connected: boolean }[]>([])
   const [exporting, setExporting] = useState<Record<string, boolean>>({})
   const [exported, setExported] = useState<Record<string, boolean>>({})
+  const [suggesting, setSuggesting]           = useState(false)
+  const [slots, setSlots]                     = useState<TimeSlot[]>([])
+  const [selectedSlot, setSelectedSlot]       = useState<TimeSlot | null>(null)
+  const [titleInput, setTitleInput]           = useState('다음 회의')
+  const [registering, setRegistering]         = useState(false)
+  const [registeredEvent, setRegisteredEvent] = useState<{ event_id: string; scheduled_at: string } | null>(null)
 
   useEffect(() => {
     getIntegrations(workspaceId)
@@ -465,6 +479,59 @@ function ExportTab({
       }
     } finally {
       setExporting((p) => ({ ...p, [serviceId]: false }))
+    }
+  }
+  async function handleSuggest() {
+    if (!isConnected('google_calendar')) {
+      if (confirm('Google Calendar 연동이 필요합니다. 설정 페이지로 이동하시겠습니까?')) {
+        navigate('/settings/integrations')
+      }
+      return
+    }
+    setSuggesting(true); setSlots([]); setSelectedSlot(null); setRegisteredEvent(null)
+    try {
+      const res = await suggestNextMeeting(meetingId!, workspaceId)
+      setSlots(res.slots)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
+      showToast(msg || '일정 제안에 실패했습니다.', 'error')
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  async function handleRegister() {
+    if (!selectedSlot) return
+    setRegistering(true)
+    try {
+      const res = await registerNextMeeting(meetingId!, workspaceId, {
+        title: titleInput,
+        scheduled_at: selectedSlot.start,
+        participant_ids: [],
+      })
+      setRegisteredEvent({ 
+        event_id: res.event_id, 
+        scheduled_at: selectedSlot.start 
+      })
+      setSlots([])
+      setSelectedSlot(null)
+      showToast('구글 캘린더에 일정이 등록되었습니다.')
+    } catch {
+      showToast('일정 등록에 실패했습니다.', 'error')
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  async function handleDeleteEvent() {
+    if (!registeredEvent) return
+    if (!confirm('등록된 일정을 삭제하시겠습니까?')) return
+    try {
+      await deleteNextMeeting(meetingId!, workspaceId, registeredEvent.event_id)
+      setRegisteredEvent(null)
+      showToast('일정이 삭제되었습니다.')
+    } catch {
+      showToast('삭제에 실패했습니다.', 'error')
     }
   }
 
@@ -539,19 +606,89 @@ function ExportTab({
         })}
       </div>
 
-      {/* 다음 회의 일정 제안 — 링크 */}
-      <div
-        className="mt-4 p-4 rounded-xl border border-accent/30 bg-accent/5 flex items-center justify-between cursor-pointer hover:bg-accent/10 transition-colors"
-        onClick={() => navigate(`/meetings/${meetingId}/export`)}
-      >
-        <div className="flex items-center gap-2.5">
-          <Sparkles size={14} className="text-accent" />
-          <div>
+      {/* AI 다음 회의 일정 제안 */}
+      <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} className="text-accent" />
             <p className="text-sm font-medium text-accent">AI 다음 회의 일정 제안</p>
-            <p className="text-mini text-muted-foreground mt-0.5">참석자 가용 시간 분석 → 최적 일정 3개 추천</p>
           </div>
+          {!registeredEvent && (
+            <button
+              onClick={handleSuggest}
+              disabled={suggesting || !isConnected('google_calendar')}
+              className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-accent text-accent-foreground text-mini font-medium hover:bg-accent/90 disabled:opacity-60 transition-colors"
+              title={!isConnected('google_calendar') ? 'Google Calendar 연동이 필요합니다' : ''}
+            >
+              {suggesting ? <><Loader2 size={11} className="animate-spin" /> 분석 중...</> : '일정 추천받기'}
+            </button>
+          )}
         </div>
-        <ChevronRight size={14} className="text-accent shrink-0" />
+
+        {!suggesting && slots.length === 0 && !registeredEvent && (
+          <div className="flex flex-col gap-1">
+            <p className="text-mini text-muted-foreground">참석자 가용 시간 분석 → 최적 일정 3개 추천</p>
+            <div className="flex items-center gap-3 mt-0.5">
+              <span className={clsx('text-micro', isConnected('google_calendar') ? 'text-green-600 dark:text-green-400' : 'text-red-500')}>
+                {isConnected('google_calendar') ? '✓' : '✕'} Google Calendar
+              </span>
+              <span className={clsx('text-micro', isConnected('slack') ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground')}>
+                {isConnected('slack') ? '✓' : '○'} Slack <span className="opacity-60">(선택)</span>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {slots.length > 0 && !registeredEvent && (
+          <div className="flex flex-col gap-2 mt-1">
+            <p className="text-mini text-muted-foreground">추천 일정 중 하나를 선택하세요</p>
+            {slots.map((slot, i) => (
+              <button
+                key={i}
+                onClick={() => setSelectedSlot(slot)}
+                className={clsx(
+                  'text-left px-3 py-2 rounded-lg border text-sm transition-all',
+                  selectedSlot === slot ? 'border-accent bg-accent/10 text-accent' : 'border-border hover:border-accent/50',
+                )}
+              >
+                {new Date(slot.start).toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+                {' — '}
+                {new Date(slot.end).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+              </button>
+            ))}
+            {selectedSlot && (
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  placeholder="회의 제목"
+                  className="flex-1 h-8 px-3 rounded-lg border border-border bg-background text-sm outline-none focus:border-accent"
+                />
+                <button
+                  onClick={handleRegister}
+                  disabled={registering}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-accent text-accent-foreground text-mini font-medium hover:bg-accent/90 disabled:opacity-60"
+                >
+                  {registering ? <Loader2 size={11} className="animate-spin" /> : '캘린더 등록'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {registeredEvent && (
+          <div className="flex items-center justify-between mt-1">
+            <div>
+              <p className="text-sm font-medium text-green-600 dark:text-green-400">✓ 일정 등록 완료</p>
+              <p className="text-mini text-muted-foreground mt-0.5">
+                {new Date(registeredEvent.scheduled_at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+            <button onClick={handleDeleteEvent} className="text-mini text-muted-foreground hover:text-red-500 transition-colors">
+              삭제
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
