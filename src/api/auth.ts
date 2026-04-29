@@ -184,6 +184,7 @@ export async function login(
 ): Promise<TokenResponse> {
   const tokens = await apiRequest<TokenResponse>('/users/login', {
     method: 'POST',
+    skipAuthRefresh: true,
     body: JSON.stringify(payload),
   })
   setAuthTokens(tokens.access_token, tokens.refresh_token)
