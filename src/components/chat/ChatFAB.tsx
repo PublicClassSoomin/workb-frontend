@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, Loader2 } from 'lucide-react'
+import { X, Send, Loader2, Paperclip, CheckCircle2, FileBarChart2 } from 'lucide-react'
 import clsx from 'clsx'
 import ReactMarkdown from 'react-markdown'
 import WorkbAssistantAvatar from './WorkbAssistantAvatar'
 import type { ChatMessage } from '../../types/chat'
 import { useLocation } from 'react-router-dom'
 import { getCurrentWorkspaceId } from '../../api/client'
-import { sendChatMessage, getChatHistory, getPastMeetings, type PastMeeting } from '../../api/chatbot'
+import { sendChatMessage, getChatHistory, getPastMeetings, type PastMeeting, analyzeDocument } from '../../api/chatbot'
 import remarkGfm from 'remark-gfm'
 
 // sessionStorge 키 - workspace별로 세션 분리
@@ -20,13 +20,13 @@ function getWelcomeMessage(meetingId: number | null): ChatMessage {
   : ''
 
   const content = [
-    '안녕하세요! **Workb AI 도우미**입니다.',                                                                      
-    '아래 내용을 도와드릴 수 있어요.',                                                                               
-    meetingSection +                                                                                                 
-    '**📁 자료 검색**\n- 업로드된 내부 문서 검색\n- 이전 회의 내용 조회',                                        
-    '**🌐 외부 정보**\n- 웹 검색으로 최신 정보 조회',                                                              
-    '**📅 회의 일정**\n- 특정 날짜 회의 일정 조회',                                                              
-    '무엇이든 물어보세요!',                                                                                          
+    '안녕하세요! **Workb AI 도우미**입니다.',
+    '아래 내용을 도와드릴 수 있어요.',
+    meetingSection +
+    '**📁 자료 검색**\n- 업로드된 내부 문서 검색\n- 이전 회의 내용 조회',
+    '**🌐 외부 정보**\n- 웹 검색으로 최신 정보 조회',
+    '**📅 회의 일정**\n- 특정 날짜 회의 일정 조회',
+    '무엇이든 물어보세요!',
   ].join('\n\n')
 
   return {
@@ -37,16 +37,22 @@ function getWelcomeMessage(meetingId: number | null): ChatMessage {
   }
 }
 
-// 이전 회의 선택 UI - 2개 이상일 때 인라인으로 표
 function MeetingSelectorCard({ 
   meetings,
-  onConfirm 
+  onConfirm,
 }: {
     meetings: PastMeeting[]
     onConfirm: (ids: number[] | null) => void // null = 전체
 }) {
   const [mode, setMode] = useState<'ask' | 'select'>('ask')
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  if (meetings.length === 0) {
+    return (
+      <div className="mx-2 p-3 rounded-xl bg-muted border border-border text-sm text-muted-foreground">
+        선택할 수 있는 회의가 없습니다.
+     </div> 
+    )
+  }
 
   if (mode === 'ask') {
     return (
@@ -95,8 +101,7 @@ transition-colors"
       <button
         disabled={checked.size === 0}
         onClick={() => onConfirm([...checked])}
-        className="px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs disabled:opacity-40
-disabled:cursor-not-allowed transition-colors"
+        className="px-3 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         확인 ({checked.size}개 선택)
       </button>
@@ -109,12 +114,15 @@ export default function ChatFAB() {
   const location = useLocation()
   // URL /meetings/live/{id} 에서 meeting_id 파싱
   // 회의 중일 때만 존재 -> 없으면 null (이전 회의 검색만 가능)
-  const match = location.pathname.match(/\/live\/([^/]+)/)
-  const meetingId = match ? Number(match[1]) : null
+  const liveMatch = location.pathname.match(/\/live\/([^/]+)/)
+  const meetingMatch = location.pathname.match(/\/meetings\/(\d+)\//)
+  const meetingId = liveMatch ? Number(liveMatch[1]) : meetingMatch ? Number(meetingMatch[1]) : null
 
   const [messages, setMessages] = useState<ChatMessage[]>([getWelcomeMessage(meetingId)])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -195,16 +203,24 @@ export default function ChatFAB() {
         {
           id: `a-${Date.now()}`,
           role: 'assistant',
-          content: res.answer,
+          content: pastMeetings.length === 0
+            ? '아직 완료된 회의가 없습니다.'
+            : res.answer,
           timestamp: res.timestamp,
           sources: res.result?.sources ?? [],
+          function_type: res.function_type,
         },
       ])
 
       // 백엔드가 회의 선택을 요청하는 경우(past_summary + 선택 안내) → 선택 UI 재표시
-      if (res.function_type === 'past_summary' && res.answer.includes('선택해주세요')) {
-        setPendingMessage(text)
-        setShowMeetingSelector(true)
+      if (
+        (res.function_type === 'past_summary' || res.function_type === 'quick_report') && 
+        res.answer.includes('선택해주세요')
+       ) {
+        if (pastMeetings.length > 0) {
+          setPendingMessage(text)
+          setShowMeetingSelector(true)
+        }
       }
     } catch {
       // 에러 시 인라인 메시지로 표시 - 토스트 없이 대화 흐름 안에서 처리
@@ -219,6 +235,42 @@ export default function ChatFAB() {
       ])
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if(!file) return
+    e.target.value = ''
+
+    // 업로드 시작 메시지 즉시 표시
+    const msgId = `upload-${Date.now()}`
+    setMessages((prev) => [...prev, {
+      id: msgId,
+      role: 'assistant',
+      content: `📎 **${file.name}** 업로드 중...`,
+      timestamp: new Date().toISOString(),
+    }])
+    setUploadStatus('uploading')
+
+    try {
+      await analyzeDocument(workspaceId, file)
+      setUploadStatus('done')
+      setTimeout(() => setUploadStatus('idle'), 2000)
+      setMessages((prev) => prev.map((m) =>
+        m.id === msgId
+          ? { ...m, content:  `✅ **${file.name}** 업로드 완료!\n요약 및 검색이 가능합니다.` }
+          : m
+      ))
+    } catch (err) {
+      setUploadStatus('error')
+      setTimeout(() => setUploadStatus('idle'), 2000)
+      const detail = err instanceof Error ? err.message : String(err)
+      setMessages((prev) => prev.map((m) => 
+        m.id == msgId
+          ? { ...m, content: `❌ **${file.name}** 업로드 실패: ${detail}` }
+          : m
+      ))
     }
   }
 
@@ -239,10 +291,11 @@ export default function ChatFAB() {
     setInput('')
 
     const isPastMeetingQuery = /이전|지난|과거|전 회의/.test(text)
+    const isReportQuery = /보고서|간이보고서/.test(text);
     const hasDateRange = /\d+월\s*\d+일/.test(text)
 
     // 이전 회의 관련 질문 && 2개 이상 && 날짜 범위 없음 -> 매번 선택 UI
-    if (pastMeetingsLoaded && pastMeetings.length >= 2 && isPastMeetingQuery && !hasDateRange) {
+    if (pastMeetingsLoaded && pastMeetings.length >= 2 && (isPastMeetingQuery || isReportQuery) && !hasDateRange) {
       setPendingMessage(text)
       setShowMeetingSelector(true)
       return
@@ -377,9 +430,29 @@ export default function ChatFAB() {
                             {new URL(s.url).hostname}
                           </span>
                         </a>
-                    ))}
+                    ))} 
                     </div>
                   )}
+                  {msg.role === 'assistant' &&
+                    <div>
+                      {msg.function_type === 'quick_report' && meetingId && (                                            
+                          <a
+                            href={`/meetings/${meetingId}/reports?tab=reports`}
+                            className="mt-2 flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-mini hover:bg-muted transition-colors w-fit"
+                          > 
+                            <FileBarChart2 size={12} /> 정식 보고서는 회의록 페이지에서
+                          </a>
+                        )}                        
+                        {msg.function_type === 'report_guide' && meetingId && (                                            
+                          <a
+                            href={`/meetings/${meetingId}/reports?tab=reports`}
+                            className="mt-2 flex items-center gap-1.5 h-8 px-3 rounded-lg bg-accent text-accent-foreground text-mini font-medium hover:bg-accent/90 transition-colors w-fit"
+                          >
+                            <FileBarChart2 size={12} /> 회의록 페이지로 이동
+                          </a>
+                        )}
+                    </div>
+                  } 
                 </div>
               </div>
             ))}
@@ -388,16 +461,9 @@ export default function ChatFAB() {
               <MeetingSelectorCard
                 meetings={pastMeetings}
                 onConfirm={(ids) => {
-                  // ids = null → 전체, ids = [1,2] → 선택된 회의만
                   setShowMeetingSelector(false)
-                  if (pendingMessage) {
-                    // null(전체) -> pastMeetings 전체 ID 명시적으로 전달
-                    const idsToSend = ids === null
-                      ? pastMeetings.map((m) => m.meeting_id)
-                      : ids
-                    void sendMessage(pendingMessage, idsToSend)
-                    setPendingMessage(null)
-                  }
+                  void sendMessage(pendingMessage ?? '', ids)
+                  setPendingMessage('')
                 }}
               />
             )}
@@ -417,6 +483,15 @@ export default function ChatFAB() {
             <div ref={bottomRef} />
           </div>
 
+          {/* 파일 첨부 버튼 */}
+          <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.pptx,.ppt,.html,.htm,.md,.markdown,.docx,.doc,.xlsx,.xls"
+              className="hidden"
+              onChange={handleFileUpload}
+          />
+
           {/* Input */}
           <form
             className="flex items-center gap-2 px-3 py-2.5 border-t border-border"
@@ -425,6 +500,21 @@ export default function ChatFAB() {
               void handleSend()
             }}
           >
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadStatus === 'uploading'}
+              className='shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40'
+              aria-label="파일 첨부"
+            >
+              {uploadStatus === 'uploading' ? (
+                <Loader2 size={16} className='animate-spin' />
+              ) : uploadStatus === 'done' ? (
+                <CheckCircle2 size={16} className="text-green-500" />
+              ) : (
+                <Paperclip size={16} />
+              )}
+            </button>
             <input
               ref={inputRef}
               type="text"

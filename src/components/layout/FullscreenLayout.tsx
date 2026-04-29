@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { useThemePreference } from '../../hooks/useThemePreference'
+import ChatFAB from '../chat/ChatFAB'
 
 /**
  * 사이드바·탑바 없이 전체 화면을 사용하는 레이아웃.
@@ -11,6 +12,7 @@ export default function FullscreenLayout() {
   return (
     <div className="h-screen overflow-hidden bg-background">
       <Outlet />
+      <ChatFAB />
     </div>
   )
 }
