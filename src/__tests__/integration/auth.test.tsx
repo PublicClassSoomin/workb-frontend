@@ -71,7 +71,7 @@ describe('로그인 플로우 통합 테스트', () => {
     })
 
     it('잘못된 자격증명으로 로그인하면 에러 메시지가 표시됩니다', async () => {
-      vi.mocked(login).mockRejectedValueOnce(new Error('이메일 또는 비밀번호가 올바르지 않습니다.'))
+      vi.mocked(login).mockRejectedValueOnce(new Error('아이디 또는 비밀번호가 틀렸습니다.'))
 
       renderLoginPage()
 
@@ -80,7 +80,7 @@ describe('로그인 플로우 통합 테스트', () => {
       await userEvent.click(screen.getByRole('button', { name: '로그인' }))
 
       await waitFor(() => {
-        expect(screen.getByText('이메일 또는 비밀번호가 올바르지 않습니다.')).toBeInTheDocument()
+        expect(screen.getByText('아이디 또는 비밀번호가 틀렸습니다.')).toBeInTheDocument()
       })
     })
   })
