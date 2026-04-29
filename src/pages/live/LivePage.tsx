@@ -17,7 +17,7 @@ import { endWorkspaceMeeting } from '../../api/meetings'
 import { getCurrentWorkspaceId } from '../../utils/workspace'
 
 // ── Panel types ───────────────────────────────────────────────────────────
-type MainPanel = 'decisions' | 'actions' | 'chat'
+type MainPanel = 'decisions' | 'actions'
 type AuxPanel = 'screen' | 'image' | null
 
 const DEVICE_STORAGE_KEY = 'workb-device-settings'
@@ -50,9 +50,8 @@ export default function LivePage() {
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
 
-  // Main right panel (decisions / actions / chat)
+  // Main right panel (decisions / actions)
   const [mainPanel, setMainPanel] = useState<MainPanel>('decisions')
-  const [chatInput, setChatInput] = useState('')
 
   // Aux panel (search / screen / speakers) — null = closed
   const [auxPanel, setAuxPanel] = useState<AuxPanel>(null)
@@ -147,40 +146,6 @@ export default function LivePage() {
         </div>
       )
     }
-    // chat
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-mini font-medium text-muted-foreground uppercase tracking-wide mb-1">AI 챗봇 패널</p>
-        <div className="p-2.5 rounded-lg bg-accent-subtle border border-accent/20">
-          <p className="text-mini text-accent font-medium mb-1">가능한 기능</p>
-          <div className="flex flex-col gap-1">
-            {['현재까지 내용 요약', '인터넷 자료 검색', '회사 DB 조회', '데이터 시각화', '일정 자동 등록'].map((f) => (
-              <button key={f} onClick={() => setChatInput(f)} className="text-left text-mini text-accent/80 hover:text-accent transition-colors">
-                • {f}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mt-2 p-2 rounded-lg border border-border bg-background">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            placeholder="무엇이든 질문하세요..."
-            className="flex-1 bg-transparent outline-none text-mini placeholder:text-muted-foreground"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                console.log('TODO: AI chat', chatInput)
-                setChatInput('')
-              }
-            }}
-          />
-          <button className="text-accent" aria-label="전송">
-            <MessageSquare size={13} />
-          </button>
-        </div>
-      </div>
-    )
   }
 
   function renderAuxPanelContent() {
@@ -315,7 +280,6 @@ export default function LivePage() {
           {([
             { id: 'decisions', label: '결정', icon: CheckSquare },
             { id: 'actions', label: '액션', icon: Zap },
-            { id: 'chat', label: 'AI 챗', icon: MessageSquare },
           ] as const).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -412,7 +376,6 @@ export default function LivePage() {
           {([
             { id: 'decisions', label: '결정', icon: CheckSquare },
             { id: 'actions', label: '액션', icon: Zap },
-            { id: 'chat', label: 'AI 챗', icon: MessageSquare },
           ] as const).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
