@@ -31,9 +31,11 @@ import Tooltip from "../ui/Tooltip";
 import { useAuth } from "../../context/AuthContext";
 import {
   getCurrentWorkspaceId,
+  getCurrentWorkspaceRole,
   setCurrentWorkspaceId,
   setCurrentWorkspaceRole,
   WORKSPACE_CHANGED_EVENT,
+  WORKSPACE_ROLE_CHANGED_EVENT,
 } from "../../utils/workspace";
 import { useWorkspaceLogo } from "../../utils/workspaceLogo";
 import { useProfileImage } from "../../utils/profileImage";
@@ -102,10 +104,9 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
     [workspaces, currentId]
   );
 
-  // 워크스페이스 목록 로드 + 현재 선택 보정
-  useEffect(() => {
+  function loadWorkspaces() {
     let mounted = true;
-    fetchMyWorkspaces()
+    const request = fetchMyWorkspaces()
       .then((rows) => {
         if (!mounted) return;
         const ui = rows.map(toUiWorkspace);
@@ -124,8 +125,35 @@ function WorkspaceSelector({ collapsed }: WorkspaceSelectorProps) {
         if (!mounted) return;
         setWorkspaces([]);
       });
+
+    return {
+      request,
+      cancel: () => {
+        mounted = false;
+      },
+    };
+  }
+
+  // 워크스페이스 목록 로드 + 현재 선택 보정
+  useEffect(() => {
+    const loader = loadWorkspaces();
     return () => {
-      mounted = false;
+      loader.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleWorkspaceChanged(event: Event) {
+      const nextId = (event as CustomEvent<{ id: number }>).detail?.id;
+      if (Number.isFinite(nextId) && nextId > 0) setCurrentId(nextId);
+
+      const loader = loadWorkspaces();
+      loader.request.finally(() => loader.cancel());
+    }
+
+    window.addEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
     };
   }, []);
 
@@ -365,11 +393,13 @@ export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
 }: SidebarProps) {
-  const { isAdmin, user } = useAuth();
+  const { user } = useAuth();
   const settingsPath = "/settings/my";
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspaceId());
+  const [workspaceRole, setWorkspaceRoleState] = useState(() => getCurrentWorkspaceRole());
   const workspaceLogoUrl = useWorkspaceLogo(workspaceId);
   const profileImage = useProfileImage(user?.id);
+  const isWorkspaceAdmin = workspaceRole === "admin";
 
   useEffect(() => {
     function handleWorkspaceChanged(event: Event) {
@@ -377,8 +407,17 @@ export default function Sidebar({
       if (Number.isFinite(nextId) && nextId > 0) setWorkspaceId(nextId);
     }
 
+    function handleWorkspaceRoleChanged(event: Event) {
+      const nextRole = (event as CustomEvent<{ role: string }>).detail?.role;
+      setWorkspaceRoleState(nextRole || getCurrentWorkspaceRole());
+    }
+
     window.addEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
-    return () => window.removeEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
+    window.addEventListener(WORKSPACE_ROLE_CHANGED_EVENT, handleWorkspaceRoleChanged);
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED_EVENT, handleWorkspaceChanged);
+      window.removeEventListener(WORKSPACE_ROLE_CHANGED_EVENT, handleWorkspaceRoleChanged);
+    };
   }, []);
 
   // 모바일: ESC로 닫기
@@ -486,7 +525,7 @@ export default function Sidebar({
         >
           {NAV_GROUPS.map((group, groupIdx) => {
             const items = group.items.filter(
-              (item) => isAdmin || !item.adminOnly
+              (item) => isWorkspaceAdmin || !item.adminOnly
             );
             if (items.length === 0) return null;
 
