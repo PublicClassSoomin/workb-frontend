@@ -1,20 +1,19 @@
 import { useState, useEffect, Fragment } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import {
   Plus, ExternalLink, ChevronDown, ChevronRight,
   Sparkles, Loader2, Trash2,
-  CheckCircle2, Clock3, Ban, Circle,
+  CheckCircle2, Clock3, Ban, Circle, Pencil,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { getCurrentWorkspaceId } from '../../api/client'
 import {
-  getWbs, generateWbs, createEpic, createTask, patchTask, deleteEpic, deleteTask,
+  getWbs, generateWbs, createEpic, createTask,
+  patchEpic, patchTask, deleteEpic, deleteTask,
   toStatus, fromStatus, toPriority,
   type WbsEpicApi,
 } from '../../api/wbs'
-import type { WbsEpic, WbsTask, WbsStatus, WbsPriority } from '../../types/wbs'
-
-// ── 배지 & 셀 헬퍼 ────────────────────────────────────────────────────────────
+import type { WbsEpic, WbsStatus, WbsPriority } from '../../types/wbs'
 
 const PRIORITY_MAP: Record<WbsPriority, { label: string; cls: string }> = {
   urgent: { label: '긴급', cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
@@ -24,19 +23,10 @@ const PRIORITY_MAP: Record<WbsPriority, { label: string; cls: string }> = {
 }
 
 const STATUS_MAP: Record<WbsStatus, { label: string; cls: string; icon: React.ReactNode }> = {
-  todo:       { label: '할 일',   cls: 'bg-muted text-muted-foreground',                                                   icon: <Circle size={10} /> },
-  inprogress: { label: '진행 중', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',                 icon: <Clock3 size={10} /> },
-  done:       { label: '완료',    cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',             icon: <CheckCircle2 size={10} /> },
-  blocked:    { label: '블록',    cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',                     icon: <Ban size={10} /> },
-}
-
-function PriorityBadge({ priority }: { priority: WbsPriority }) {
-  const { label, cls } = PRIORITY_MAP[priority] ?? PRIORITY_MAP.medium
-  return (
-    <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-micro font-semibold whitespace-nowrap', cls)}>
-      {label}
-    </span>
-  )
+  todo:       { label: '할 일',   cls: 'bg-muted text-muted-foreground',                                icon: <Circle size={10} /> },
+  inprogress: { label: '진행 중', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',   icon: <Clock3 size={10} /> },
+  done:       { label: '완료',    cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300', icon: <CheckCircle2 size={10} /> },
+  blocked:    { label: '블록',    cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',    icon: <Ban size={10} /> },
 }
 
 function StatusSelect({ status, onChange }: { status: WbsStatus; onChange: (s: WbsStatus) => void }) {
@@ -61,30 +51,50 @@ function StatusSelect({ status, onChange }: { status: WbsStatus; onChange: (s: W
 
 function Avatar({ name }: { name?: string }) {
   if (!name) return <span className="text-mini text-muted-foreground">—</span>
-  const initial = name.trim()[0]?.toUpperCase() ?? '?'
   const colors = ['bg-violet-500', 'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500']
   const color = colors[name.charCodeAt(0) % colors.length]
   return (
     <div className="flex items-center gap-1.5 whitespace-nowrap">
-      <span className={clsx('w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0', color, 'text-micro font-bold')}>
-        {initial}
+      <span className={clsx('w-5 h-5 rounded-full flex items-center justify-center text-white shrink-0 text-micro font-bold', color)}>
+        {name.trim()[0]?.toUpperCase()}
       </span>
       <span className="text-mini text-foreground">{name}</span>
     </div>
   )
 }
 
-function DueDate({ date }: { date?: string }) {
-  if (!date) return <span className="text-mini text-muted-foreground">—</span>
-  const isPast = new Date(date) < new Date()
+// 인라인 텍스트 편집 셀
+function InlineText({
+  value, onSave, className, placeholder = '—',
+}: { value: string; onSave: (v: string) => void; className?: string; placeholder?: string }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { onSave(draft); setEditing(false) }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { onSave(draft); setEditing(false) }
+          if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+        }}
+        className={clsx('bg-transparent outline-none border-b border-accent w-full', className)}
+      />
+    )
+  }
   return (
-    <span className={clsx('text-mini whitespace-nowrap', isPast ? 'text-red-500 font-medium' : 'text-muted-foreground')}>
-      {new Date(date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}
+    <span
+      onClick={() => { setDraft(value); setEditing(true) }}
+      className={clsx('cursor-pointer hover:text-accent transition-colors group/text', className)}
+    >
+      {value || <span className="text-muted-foreground">{placeholder}</span>}
+      <Pencil size={10} className="inline ml-1 opacity-0 group-hover/text:opacity-40" />
     </span>
   )
 }
 
-// ── 데이터 변환 ────────────────────────────────────────────────────────────────
 function fromApi(epics: WbsEpicApi[]): WbsEpic[] {
   return epics.map((epic) => ({
     id: String(epic.id),
@@ -105,10 +115,11 @@ function fromApi(epics: WbsEpicApi[]): WbsEpic[] {
   }))
 }
 
-// ── 메인 컴포넌트 ──────────────────────────────────────────────────────────────
 export default function WbsPage() {
   const { meetingId } = useParams()
   const workspaceId = getCurrentWorkspaceId()
+  const { state } = useLocation()
+  const meetingTitle = (state as any)?.meetingTitle as string | undefined
 
   const [epics, setEpics]           = useState<WbsEpic[]>([])
   const [collapsed, setCollapsed]   = useState<Record<string, boolean>>({})
@@ -130,21 +141,34 @@ export default function WbsPage() {
     setCollapsed((p) => ({ ...p, [id]: !p[id] }))
   }
 
-  async function updateTaskStatus(epicId: string, taskId: string, status: WbsStatus) {
-    setEpics((prev) => prev.map((e) => e.id !== epicId ? e : {
-      ...e, tasks: e.tasks.map((t) => t.id !== taskId ? t : { ...t, status }),
+  // ── 에픽 수정 ──────────────────────────────────────────────────────────
+  async function saveEpicTitle(epicId: string, title: string) {
+    if (!title.trim()) return
+    setEpics((p) => p.map((e) => e.id !== epicId ? e : { ...e, title }))
+    await patchEpic(meetingId!, workspaceId, parseInt(epicId), { title }).catch(() => {})
+  }
+
+  // ── 태스크 수정 공통 ────────────────────────────────────────────────────
+  function updateTask(epicId: string, taskId: string, patch: Partial<WbsEpic['tasks'][0]>) {
+    setEpics((p) => p.map((e) => e.id !== epicId ? e : {
+      ...e,
+      tasks: e.tasks.map((t) => t.id !== taskId ? t : { ...t, ...patch }),
     }))
-    await patchTask(meetingId!, workspaceId, parseInt(taskId), { status: fromStatus(status) }).catch(() => {})
+  }
+
+  async function saveTaskField(epicId: string, taskId: string, body: Record<string, unknown>) {
+    await patchTask(meetingId!, workspaceId, parseInt(taskId), body).catch(() => {})
   }
 
   async function handleGenerate() {
+    if (epics.length > 0) {
+      if (!confirm('기존 WBS가 모두 삭제되고 새로 생성됩니다. 계속하시겠습니까?')) return
+    }
     setGenerating(true)
     try {
       const d = await generateWbs(meetingId!, workspaceId)
       setEpics(fromApi(d.epics))
-    } finally {
-      setGenerating(false)
-    }
+    } finally { setGenerating(false) }
   }
 
   async function handleAddEpic() {
@@ -160,6 +184,7 @@ export default function WbsPage() {
     setEpics((p) => p.map((e) => e.id !== epicId ? e : {
       ...e, tasks: [...e.tasks, {
         id: String(d.id), epicId, title: d.title,
+        assigneeName: d.assignee_name ?? undefined,
         priority: toPriority(d.priority), status: toStatus(d.status),
         dueDate: d.due_date ?? undefined, progress: d.progress,
       }],
@@ -194,12 +219,10 @@ export default function WbsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-foreground">WBS · 태스크 리스트</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">회의 #{meetingId}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{meetingTitle ?? `회의 #${meetingId}`}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button
-            className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors"
-          >
+          <button className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
             <ExternalLink size={13} /> JIRA 동기화
           </button>
           <button
@@ -219,7 +242,7 @@ export default function WbsPage() {
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60"
+            className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-60"
           >
             {generating ? <><Loader2 size={13} className="animate-spin" /> 생성 중...</> : <><Sparkles size={13} /> AI WBS 생성</>}
           </button>
@@ -227,9 +250,9 @@ export default function WbsPage() {
       ) : (
         <>
           {/* AI 배너 */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-subtle border border-accent/20 mb-5">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/5 border border-accent/20 mb-5">
             <Sparkles size={13} className="text-accent shrink-0" />
-            <p className="text-mini text-accent flex-1">AI가 회의 내용을 기반으로 에픽과 태스크를 자동 생성했습니다.</p>
+            <p className="text-mini text-accent flex-1">AI가 회의 내용을 기반으로 에픽과 태스크를 자동 생성했습니다. 셀을 클릭하면 바로 편집할 수 있습니다.</p>
             <button onClick={handleGenerate} disabled={generating} className="text-mini text-accent hover:underline disabled:opacity-60 shrink-0">
               {generating ? '생성 중...' : '재생성'}
             </button>
@@ -239,14 +262,14 @@ export default function WbsPage() {
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
-                {/* 고정 헤더 */}
                 <thead className="sticky top-0 z-10 bg-card border-b border-border">
                   <tr>
                     <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide">작업명</th>
                     <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap min-w-[120px]">담당자</th>
                     <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap min-w-[80px]">우선순위</th>
                     <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap min-w-[110px]">상태</th>
-                    <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap min-w-[80px]">기한</th>
+                    <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap min-w-[90px]">기한</th>
+                    <th className="text-left px-4 py-3 text-micro font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap min-w-[70px]">진행률</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
@@ -262,18 +285,19 @@ export default function WbsPage() {
                               onClick={() => toggleEpic(epic.id)}
                               className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                             >
-                              {collapsed[epic.id]
-                                ? <ChevronRight size={15} />
-                                : <ChevronDown size={15} />
-                              }
+                              {collapsed[epic.id] ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                             </button>
-                            <span className="font-semibold text-foreground truncate">{epic.title}</span>
+                            <InlineText
+                              value={epic.title}
+                              onSave={(v) => saveEpicTitle(epic.id, v)}
+                              className="font-semibold text-foreground"
+                            />
                             <span className="shrink-0 text-micro text-muted-foreground px-1.5 py-0.5 rounded-full bg-muted">
                               {epic.tasks.length}개
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-2.5" colSpan={3}>
+                        <td className="px-4 py-2.5" colSpan={4}>
                           <div className="flex items-center gap-2">
                             <div className="w-20 h-1.5 rounded-full bg-border overflow-hidden">
                               <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${epic.progress}%` }} />
@@ -286,7 +310,6 @@ export default function WbsPage() {
                           <button
                             onClick={() => handleDeleteEpic(epic.id)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all"
-                            title="에픽 삭제"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -295,36 +318,102 @@ export default function WbsPage() {
 
                       {/* ── Task 행들 ── */}
                       {!collapsed[epic.id] && epic.tasks.map((task) => (
-                        <tr
-                          key={task.id}
-                          className="border-b border-border hover:bg-accent/5 transition-colors group"
-                        >
-                          {/* 작업명 — 들여쓰기 */}
+                        <tr key={task.id} className="border-b border-border hover:bg-accent/5 transition-colors group">
+
+                          {/* 작업명 */}
                           <td className="px-4 py-2.5 pl-10">
-                            <span className="text-sm text-foreground break-words leading-snug">{task.title}</span>
+                            <InlineText
+                              value={task.title}
+                              onSave={(v) => {
+                                if (!v.trim()) return
+                                updateTask(epic.id, task.id, { title: v })
+                                saveTaskField(epic.id, task.id, { title: v })
+                              }}
+                              className="text-sm text-foreground"
+                            />
                           </td>
 
                           {/* 담당자 */}
                           <td className="px-4 py-2.5">
-                            <Avatar name={task.assigneeName} />
+                            <InlineText
+                              value={task.assigneeName ?? ''}
+                              onSave={(v) => {
+                                updateTask(epic.id, task.id, { assigneeName: v || undefined })
+                                saveTaskField(epic.id, task.id, { assignee_name: v || null })
+                              }}
+                              className="text-mini text-foreground"
+                              placeholder="담당자 없음"
+                            />
                           </td>
 
                           {/* 우선순위 */}
                           <td className="px-4 py-2.5">
-                            <PriorityBadge priority={task.priority} />
+                            <div className="relative inline-flex items-center">
+                              <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-micro font-semibold whitespace-nowrap', PRIORITY_MAP[task.priority]?.cls)}>
+                                {PRIORITY_MAP[task.priority]?.label}
+                              </span>
+                              <select
+                                value={task.priority}
+                                onChange={(e) => {
+                                  const p = e.target.value as WbsPriority
+                                  updateTask(epic.id, task.id, { priority: p })
+                                  saveTaskField(epic.id, task.id, { priority: p === 'urgent' ? 'high' : p })
+                                }}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                              >
+                                {Object.entries(PRIORITY_MAP).map(([val, { label }]) => (
+                                  <option key={val} value={val}>{label}</option>
+                                ))}
+                              </select>
+                            </div>
                           </td>
 
                           {/* 상태 */}
                           <td className="px-4 py-2.5">
                             <StatusSelect
                               status={task.status}
-                              onChange={(s) => updateTaskStatus(epic.id, task.id, s)}
+                              onChange={(s) => {
+                                updateTask(epic.id, task.id, { status: s })
+                                saveTaskField(epic.id, task.id, { status: fromStatus(s) })
+                              }}
                             />
                           </td>
 
                           {/* 기한 */}
                           <td className="px-4 py-2.5">
-                            <DueDate date={task.dueDate} />
+                            <input
+                              type="date"
+                              value={task.dueDate ?? ''}
+                              onChange={(e) => {
+                                const v = e.target.value || undefined
+                                updateTask(epic.id, task.id, { dueDate: v })
+                                saveTaskField(epic.id, task.id, { due_date: v ?? null })
+                              }}
+                              className={clsx(
+                                'text-mini bg-transparent outline-none cursor-pointer w-24',
+                                task.dueDate && new Date(task.dueDate) < new Date()
+                                  ? 'text-red-500 font-medium'
+                                  : 'text-muted-foreground',
+                              )}
+                            />
+                          </td>
+
+                          {/* 진행률 */}
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0} max={100}
+                                value={task.progress}
+                                onChange={(e) => {
+                                  const v = Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
+                                  updateTask(epic.id, task.id, { progress: v })
+                                  saveTaskField(epic.id, task.id, { progress: v })
+                                }}
+                                className="w-10 text-mini text-center bg-transparent outline-none border-b border-transparent hover:border-border focus:border-accent text-muted-foreground"
+                              />
+                              <span className="text-micro text-muted-foreground">%</span>
+                            </div>
                           </td>
 
                           {/* 삭제 */}
@@ -332,7 +421,6 @@ export default function WbsPage() {
                             <button
                               onClick={() => handleDeleteTask(epic.id, task.id)}
                               className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all"
-                              title="태스크 삭제"
                             >
                               <Trash2 size={13} />
                             </button>
@@ -343,7 +431,7 @@ export default function WbsPage() {
                       {/* ── 태스크 추가 행 ── */}
                       {!collapsed[epic.id] && (
                         <tr className="border-b border-border bg-muted/10">
-                          <td colSpan={6} className="px-4 py-2 pl-10">
+                          <td colSpan={7} className="px-4 py-2 pl-10">
                             {addingTask === epic.id ? (
                               <div className="flex items-center gap-2">
                                 <input

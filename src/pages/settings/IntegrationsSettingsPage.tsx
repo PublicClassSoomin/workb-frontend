@@ -4,38 +4,43 @@ import { getCurrentWorkspaceId } from '../../api/client'
 import {
   getIntegrations,
   getOAuthUrl,
-  connectJira,
-  connectKakao,
   disconnectIntegration,
   getSlackChannels,
   saveSlackChannel,
   getGoogleCalendars,
   createGoogleCalendar,
   selectGoogleCalendar,
+  getJiraProjects,
+  saveJiraProject,
+  getJiraStatuses,
+  saveJiraMapping,
   type IntegrationItem,
   type ServiceName,
   type OAuthService,
-  type JiraConnectBody,
+  type JiraProject,
   type SlackChannel,
   type GoogleCalendarItem,
 } from '../../api/integrations'
 
-const OAUTH_SERVICES: OAuthService[] = ['google_calendar', 'slack', 'notion']
+const OAUTH_SERVICES: OAuthService[] = ['google_calendar', 'slack', 'jira']
 
 const SERVICE_META: Record<ServiceName, { name: string; description: string; icon: string; buttonLabel: string }> = {
-  jira: { name: 'JIRA', description: '이슈 자동 생성 및 WBS 매핑', icon: '🔵', buttonLabel: 'API Key 입력' },
-  slack: { name: 'Slack', description: '회의 요약 및 액션 아이템 알림', icon: '💬', buttonLabel: 'Slack에 추가' },
-  notion: { name: 'Notion', description: '회의록 자동 내보내기', icon: '📝', buttonLabel: 'Notion 연결' },
-  google_calendar: { name: 'Google Calendar', description: '회의 일정 연동 및 자동 등록', icon: '📅', buttonLabel: 'Google 연결' },
-  kakao: { name: '카카오톡 알림', description: '회의 요약·액션 아이템 알림 발송', icon: '💛', buttonLabel: 'API Key 입력' },
+  jira:             { name: 'JIRA',            description: 'WBS 태스크를 JIRA 이슈로 내보내고 진행 상태를 동기화', icon: '🔵', buttonLabel: 'JIRA 연결' },
+  slack:            { name: 'Slack',           description: '회의 요약 및 액션 아이템 알림',                       icon: '💬', buttonLabel: 'Slack에 추가' },
+  notion:           { name: 'Notion',          description: '회의록 자동 내보내기',                               icon: '📝', buttonLabel: 'Notion 연결' },
+  google_calendar:  { name: 'Google Calendar', description: '회의 일정 연동 및 자동 등록',                        icon: '📅', buttonLabel: 'Google 연결' },
+  kakao:            { name: '카카오톡 알림',    description: '회의 요약·액션 아이템 알림 발송',                    icon: '💛', buttonLabel: 'API Key 입력' },
 }
 
-type ModalState = { type: 'jira' } | { type: 'kakao' } | null
+const WORKB_STATUS_LABELS: Record<string, string> = {
+  todo: '할 일',
+  in_progress: '진행 중',
+  done: '완료',
+}
 
 export default function IntegrationsSettingsPage() {
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState<ModalState>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [googleCalendarModalOpen, setGoogleCalendarModalOpen] = useState(false)
@@ -44,13 +49,13 @@ export default function IntegrationsSettingsPage() {
   const [googleCalendarName, setGoogleCalendarName] = useState('')
   const [slackChannels, setSlackChannels] = useState<SlackChannel[]>([])
   const [channelLoading, setChannelLoading] = useState(false)
-  const [jiraForm, setJiraForm] = useState<JiraConnectBody>({
-    domain: '',
-    email: '',
-    api_token: '',
-    project_key: '',
-  })
-  const [kakaoApiKey, setKakaoApiKey] = useState('')
+  // JIRA 프로젝트 + 상태 매핑 모달
+  const [jiraStep, setJiraStep] = useState<'project' | 'mapping' | null>(null)
+  const [jiraProjects, setJiraProjects] = useState<JiraProject[]>([])
+  const [jiraProjectLoading, setJiraProjectLoading] = useState(false)
+  const [jiraSelectedProject, setJiraSelectedProject] = useState('')
+  const [jiraStatuses, setJiraStatuses] = useState<string[]>([])
+  const [jiraMapping, setJiraMapping] = useState<Record<string, string>>({})
   const workspaceId = getCurrentWorkspaceId()
 
   async function refreshList() {
@@ -94,9 +99,11 @@ export default function IntegrationsSettingsPage() {
       setSuccessMessage(`${SERVICE_META[service]?.name ?? service} 연동이 완료되었습니다!`)
       window.history.replaceState({}, '', '/settings/integrations')
       setTimeout(() => setSuccessMessage(null), 4000)
-      // Google Calendar는 OAuth 직후 캘린더 선택/생성이 필요
       if (service === 'google_calendar') {
         void openGoogleCalendarPicker()
+      }
+      if (service === 'jira') {
+        void openJiraProjectPicker()
       }
     } else if (status === 'error') {
       setError('연동 중 오류가 발생했습니다. 다시 시도해주세요.')
@@ -113,15 +120,60 @@ export default function IntegrationsSettingsPage() {
       if (OAUTH_SERVICES.includes(service as OAuthService)) {
         const { auth_url } = await getOAuthUrl(service as OAuthService, workspaceId)
         window.location.href = auth_url
-      } else if (service === 'jira') {
-        setJiraForm({ domain: '', email: '', api_token: '', project_key: '' })
-        setModal({ type: 'jira' })
-      } else if (service === 'kakao') {
-        setKakaoApiKey('')
-        setModal({ type: 'kakao' })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '연동 요청에 실패했습니다.')
+    }
+  }
+
+  async function openJiraProjectPicker() {
+    setJiraStep('project')
+    setJiraProjectLoading(true)
+    setJiraSelectedProject('')
+    try {
+      const res = await getJiraProjects(workspaceId)
+      setJiraProjects(res.projects)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'JIRA 프로젝트 목록을 불러오지 못했습니다.')
+      setJiraStep(null)
+    } finally {
+      setJiraProjectLoading(false)
+    }
+  }
+
+  async function handleJiraProjectSelect(projectKey: string) {
+    try {
+      await saveJiraProject(workspaceId, projectKey)
+      setJiraSelectedProject(projectKey)
+      // 상태 매핑 단계로 이동
+      setJiraProjectLoading(true)
+      const res = await getJiraStatuses(workspaceId)
+      const defaultMapping: Record<string, string> = {}
+      res.statuses.forEach((s) => {
+        const lower = s.toLowerCase()
+        if (lower.includes('done') || lower.includes('완료')) defaultMapping[s] = 'done'
+        else if (lower.includes('progress') || lower.includes('진행')) defaultMapping[s] = 'in_progress'
+        else defaultMapping[s] = 'todo'
+      })
+      setJiraStatuses(res.statuses)
+      setJiraMapping(defaultMapping)
+      setJiraStep('mapping')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '프로젝트 선택에 실패했습니다.')
+    } finally {
+      setJiraProjectLoading(false)
+    }
+  }
+
+  async function handleJiraMappingSave() {
+    try {
+      await saveJiraMapping(workspaceId, jiraMapping)
+      setJiraStep(null)
+      setSuccessMessage('JIRA 프로젝트 및 상태 매핑이 저장되었습니다.')
+      setTimeout(() => setSuccessMessage(null), 4000)
+      await refreshList()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '상태 매핑 저장에 실패했습니다.')
     }
   }
 
@@ -132,24 +184,6 @@ export default function IntegrationsSettingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '연동 해제에 실패했습니다.')
     }
-  }
-
-  async function handleJiraSubmit() {
-    if (!jiraForm.domain || !jiraForm.email || !jiraForm.api_token || !jiraForm.project_key) return
-    await connectJira(workspaceId, jiraForm)
-    await refreshList()
-    setModal(null)
-    setSuccessMessage('JIRA 연동이 완료되었습니다!')
-    setTimeout(() => setSuccessMessage(null), 4000)
-  }
-
-  async function handleKakaoSubmit() {
-    if (!kakaoApiKey.trim()) return
-    await connectKakao(workspaceId, kakaoApiKey.trim())
-    await refreshList()
-    setModal(null)
-    setSuccessMessage('카카오톡 알림 연동이 완료되었습니다!')
-    setTimeout(() => setSuccessMessage(null), 4000)
   }
 
   if (loading) {
@@ -186,44 +220,76 @@ export default function IntegrationsSettingsPage() {
             selectedCalendarId={item.service === 'google_calendar' ? item.selected_calendar_id : undefined}
             selectedCalendarName={item.service === 'google_calendar' ? item.selected_calendar_name : undefined}
             onCalendarChange={openGoogleCalendarPicker}
+            onJiraSetup={item.service === 'jira' && item.is_connected ? openJiraProjectPicker : undefined}
           />
         ))}
       </div>
 
-      {modal?.type === 'jira' && (
+      {/* JIRA 프로젝트 선택 모달 */}
+      {jiraStep === 'project' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
-            <h2 className="text-base font-semibold text-foreground mb-1">JIRA 연결</h2>
-            <p className="text-mini text-muted-foreground mb-4">Atlassian 계정 정보를 입력하세요.</p>
-            <div className="flex flex-col gap-2 mb-4">
-              <input type="text" placeholder="도메인 (예: company.atlassian.net)" value={jiraForm.domain} onChange={(event) => setJiraForm({ ...jiraForm, domain: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
-              <input type="email" placeholder="이메일 (Atlassian 계정)" value={jiraForm.email} onChange={(event) => setJiraForm({ ...jiraForm, email: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
-              <input type="password" placeholder="API Token" value={jiraForm.api_token} onChange={(event) => setJiraForm({ ...jiraForm, api_token: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
-              <input type="text" placeholder="프로젝트 키 (예: PROJ)" value={jiraForm.project_key} onChange={(event) => setJiraForm({ ...jiraForm, project_key: event.target.value })} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
-            </div>
-            <div className="flex items-center gap-2 justify-end">
-              <button onClick={() => setModal(null)} className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
+            <h2 className="text-base font-semibold text-foreground mb-1">JIRA 프로젝트 선택</h2>
+            <p className="text-mini text-muted-foreground mb-4">WBS와 연동할 JIRA 프로젝트를 선택하세요.</p>
+            {jiraProjectLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">불러오는 중...</p>
+            ) : jiraProjects.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">접근 가능한 프로젝트가 없습니다.</p>
+            ) : (
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border mb-4">
+                {jiraProjects.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => handleJiraProjectSelect(p.key)}
+                    className="w-full px-3 py-2.5 text-left hover:bg-muted/40 transition-colors flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{p.name}</p>
+                      <p className="text-micro text-muted-foreground">{p.key}</p>
+                    </div>
+                    <Check size={14} className="text-accent opacity-0 group-hover:opacity-100" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button onClick={() => setJiraStep(null)} className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
                 취소
-              </button>
-              <button onClick={handleJiraSubmit} className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
-                <Check size={13} /> 저장
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {modal?.type === 'kakao' && (
+      {/* JIRA 상태 매핑 모달 */}
+      {jiraStep === 'mapping' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
-            <h2 className="text-base font-semibold text-foreground mb-1">카카오톡 알림 연결</h2>
-            <p className="text-mini text-muted-foreground mb-4">카카오 REST API Key를 입력하세요.</p>
-            <input type="password" placeholder="REST API Key" value={kakaoApiKey} onChange={(event) => setKakaoApiKey(event.target.value)} className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-accent" />
+            <h2 className="text-base font-semibold text-foreground mb-1">상태 매핑 설정</h2>
+            <p className="text-mini text-muted-foreground mb-1">JIRA 상태를 WorkB 상태로 매핑하세요.</p>
+            <p className="text-micro text-muted-foreground mb-4">프로젝트: <span className="font-medium text-accent">{jiraSelectedProject}</span></p>
+            <div className="flex flex-col gap-2 mb-4 max-h-56 overflow-y-auto">
+              {jiraStatuses.map((status) => (
+                <div key={status} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-muted/30">
+                  <span className="text-sm text-foreground flex-1">{status}</span>
+                  <span className="text-mini text-muted-foreground">→</span>
+                  <select
+                    value={jiraMapping[status] ?? 'todo'}
+                    onChange={(e) => setJiraMapping((prev) => ({ ...prev, [status]: e.target.value }))}
+                    className="h-7 px-2 rounded border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    {Object.entries(WORKB_STATUS_LABELS).map(([val, label]) => (
+                      <option key={val} value={val}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
             <div className="flex items-center gap-2 justify-end">
-              <button onClick={() => setModal(null)} className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
-                취소
+              <button onClick={() => setJiraStep('project')} className="h-8 px-3 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors">
+                이전
               </button>
-              <button onClick={handleKakaoSubmit} className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
+              <button onClick={handleJiraMappingSave} className="flex items-center gap-1.5 h-8 px-4 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors">
                 <Check size={13} /> 저장
               </button>
             </div>
@@ -341,6 +407,7 @@ function IntegrationCard({
   selectedCalendarId,
   selectedCalendarName,
   onCalendarChange,
+  onJiraSetup,
 }: {
   item: IntegrationItem
   onConnect: () => void
@@ -352,6 +419,7 @@ function IntegrationCard({
   selectedCalendarId?: string
   selectedCalendarName?: string
   onCalendarChange?: () => void
+  onJiraSetup?: () => void
 }) {
   const meta = SERVICE_META[item.service]
   const isConnected = item.is_connected
@@ -388,6 +456,20 @@ function IntegrationCard({
               ))}
             </select>
           )}
+        </div>
+      )}
+
+      {item.service === 'jira' && isConnected && (
+        <div className="mb-3 pt-3 border-t border-border">
+          <div className="flex items-center justify-between">
+            <p className="text-mini text-muted-foreground">프로젝트 및 상태 매핑</p>
+            <button
+              onClick={onJiraSetup}
+              className="text-mini text-accent hover:underline transition-colors"
+            >
+              설정 변경
+            </button>
+          </div>
         </div>
       )}
 
