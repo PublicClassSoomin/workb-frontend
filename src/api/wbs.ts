@@ -35,6 +35,9 @@ export const createEpic = (m: string | number, w: number, title: string, order: 
 export const createTask = (m: string | number, w: number, epicId: number, title: string) =>
   apiRequest<WbsTaskApi>(u(m, w, '/tasks'), { method: 'POST', body: JSON.stringify({ epic_id: epicId, title }) })
 
+export const patchEpic = (m: string | number, w: number, epicId: number, body: object) =>
+  apiRequest<WbsEpicApi>(u(m, w, `/epics/${epicId}`), { method: 'PATCH', body: JSON.stringify(body) })
+
 export const patchTask = (m: string | number, w: number, taskId: number, body: object) =>
   apiRequest<WbsTaskApi>(u(m, w, `/tasks/${taskId}`), { method: 'PATCH', body: JSON.stringify(body) })
 

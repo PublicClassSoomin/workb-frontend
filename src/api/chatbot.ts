@@ -31,6 +31,14 @@ export interface PastMeetingsResponse {
     total: number
 }
 
+export interface DocumentAnalysis {
+    filename: string
+    title: string
+    summary: string
+    key_points: string[]
+    timestmap: string
+}
+
 // 메시지 전송
 // sessionId 없으면 서버가 새 UUID 발급 -> 응답의 session_id를 sessionStorage에 저장해야 함
 export async function sendChatMessage(
@@ -70,5 +78,36 @@ export async function getPastMeetings(
 ): Promise<PastMeetingsResponse> {
     return apiRequest<PastMeetingsResponse> (
         `/knowledges/workspace/${workspaceId}/past_meetings`,
+    )
+}
+
+export async function uploadDocument(workspaceId: number, file: File): Promise<void> {
+    const form = new FormData()
+    form.append('file', file)
+    await apiRequest(`/knowledges/workspaces/${workspaceId}/documents`, {
+        method: 'POST',
+        body: form,
+    })
+}
+
+export async function analyzeDocument(workspaceId: number, file: File): Promise<DocumentAnalysis> {
+    const form = new FormData()
+    form.append('file', file)
+    return apiRequest<DocumentAnalysis>(
+        `/knowledges/workspace/${workspaceId}/documents/analyze`,
+        { method: 'POST', body: form }
+    )
+}
+
+export async function generateQuickReport(
+    workspaceId: number,
+    meetingId: number,
+): Promise<void> {
+    await apiRequest(
+        `/knowledges/workspace/${workspaceId}/chatbot/quick_report`,
+        {
+            method: 'POST',
+            body: JSON.stringify({ meeting_id: meetingId }),
+        },
     )
 }
