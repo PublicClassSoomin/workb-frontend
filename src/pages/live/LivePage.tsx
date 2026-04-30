@@ -69,6 +69,8 @@ type PanelItem = {
   text: string;
 };
 
+const AUTO_SCROLL_THRESHOLD_PX = 64;
+
 export default function LivePage() {
   const { meetingId = "2" } = useParams();
   const navigate = useNavigate();
@@ -109,9 +111,23 @@ export default function LivePage() {
   const displaySegments = diarization;
 
   // 자동 스크롤
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollBottomRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+
+  function updateAutoScrollState() {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current =
+      distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX;
+  }
+
   useEffect(() => {
-    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldAutoScrollRef.current) return;
+    scrollBottomRef.current?.scrollIntoView({ block: "end" });
   }, [displaySegments, liveText]);
 
   // 처리 완료 시 회의록 화면으로 자동 이동
@@ -484,7 +500,11 @@ export default function LivePage() {
         </div>
 
         {/* STT Stream */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div
+          ref={scrollContainerRef}
+          onScroll={updateAutoScrollState}
+          className="flex-1 overflow-y-auto px-4 py-4"
+        >
           <div className="max-w-2xl mx-auto">
             <div className="flex items-center gap-2 mb-4">
               <Zap size={13} className="text-accent" />
