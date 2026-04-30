@@ -8,7 +8,6 @@ import {
   Square,
   Search,
   Monitor,
-  Users,
   MessageSquare,
   CheckSquare,
   Zap,
@@ -29,6 +28,11 @@ import LiveScreenPage from "../../pages/live/LiveScreenPage";
 import LiveImagePanel from "./LiveImagePanel";
 import { endWorkspaceMeeting } from "../../api/meetings";
 import { getCurrentWorkspaceId } from "../../utils/workspace";
+import {
+  getMicEnabled,
+  getSelectedCameraId,
+  getSelectedMicId,
+} from "../../utils/deviceSettings";
 
 // ── Panel types ───────────────────────────────────────────────────────────
 type MainPanel = "decisions" | "actions" | "chat";
@@ -120,21 +124,6 @@ function speakerMeta(speaker: string | number): {
   };
 }
 
-// ── Device storage ────────────────────────────────────────────────────────
-const DEVICE_STORAGE_KEY = "workb-device-settings";
-
-function getSelectedCameraId(): string | null {
-  try {
-    const raw = localStorage.getItem(DEVICE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { selectedCameraId?: string };
-    const id = parsed?.selectedCameraId;
-    return typeof id === "string" && id.trim() ? id : null;
-  } catch {
-    return null;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 type PanelItem = {
   id: string;
@@ -147,6 +136,10 @@ export default function LivePage() {
   const { meetingId = "2" } = useParams();
   const navigate = useNavigate();
   const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[0];
+  const [initialMicSettings] = useState(() => ({
+    selectedMicId: getSelectedMicId(),
+    micEnabled: getMicEnabled(true),
+  }));
 
   // STT WebSocket hook
   const {
@@ -157,7 +150,10 @@ export default function LivePage() {
     micOn,
     toggleMic,
     stopMeeting,
-  } = useLiveSTT(meetingId);
+  } = useLiveSTT(meetingId, {
+    selectedMicId: initialMicSettings.selectedMicId,
+    initialMicOn: initialMicSettings.micEnabled,
+  });
 
   // Controls
   const [camOn, setCamOn] = useState(false);
@@ -693,22 +689,10 @@ export default function LivePage() {
           <div className="flex items-center gap-0.5 sm:gap-1">
             {[
               {
-                id: "search" as const,
-                label: "검색",
-                Icon: Search,
-                title: "즉석 자료 검색",
-              },
-              {
                 id: "screen" as const,
                 label: "화면공유",
                 Icon: Monitor,
                 title: "화면 공유 분석",
-              },
-              {
-                id: "speakers" as const,
-                label: "화자",
-                Icon: Users,
-                title: "화자 등록 · 확인",
               },
               {
                 id: "image" as const,

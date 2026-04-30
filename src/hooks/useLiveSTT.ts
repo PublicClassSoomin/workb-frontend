@@ -25,6 +25,11 @@ interface STTMessage {
   diarization?: DiarizationSegment[];
 }
 
+interface LiveSTTOptions {
+  selectedMicId?: string | null;
+  initialMicOn?: boolean;
+}
+
 const WS_BASE =
   (import.meta.env.VITE_WS_BASE as string | undefined) ?? "ws://localhost:8888";
 
@@ -71,12 +76,63 @@ function float32ToWav(f32: Float32Array, sr: number): ArrayBuffer {
   return buf;
 }
 
-export function useLiveSTT(meetingId: string) {
+function normalizeMicId(deviceId: string | null | undefined): string | null {
+  return typeof deviceId === "string" && deviceId.trim() ? deviceId : null;
+}
+
+export function buildMicAudioConstraints(
+  selectedMicId?: string | null,
+): MediaTrackConstraints {
+  const constraints: MediaTrackConstraints = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  };
+  const normalizedMicId = normalizeMicId(selectedMicId);
+
+  if (normalizedMicId) {
+    constraints.deviceId = { exact: normalizedMicId };
+  }
+
+  return constraints;
+}
+
+function shouldRetryWithDefaultMic(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "OverconstrainedError" || error.name === "NotFoundError";
+}
+
+async function getMicrophoneStream(
+  selectedMicId: string | null,
+): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: buildMicAudioConstraints(selectedMicId),
+      video: false,
+    });
+  } catch (error) {
+    if (!selectedMicId || !shouldRetryWithDefaultMic(error)) {
+      throw error;
+    }
+
+    console.warn(
+      "[useLiveSTT] 저장된 마이크를 찾을 수 없어 기본 마이크로 재시도합니다.",
+    );
+    return navigator.mediaDevices.getUserMedia({
+      audio: buildMicAudioConstraints(null),
+      video: false,
+    });
+  }
+}
+
+export function useLiveSTT(meetingId: string, options: LiveSTTOptions = {}) {
+  const selectedMicId = normalizeMicId(options.selectedMicId);
+  const initialMicOn = options.initialMicOn ?? true;
   const [wsStatus, setWsStatus] = useState<WsStatus>("idle");
   const [liveText, setLiveText] = useState("");
   const [diarization, setDiarization] = useState<DiarizationSegment[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [micOn, setMicOn] = useState(true);
+  const [micOn, setMicOn] = useState(initialMicOn);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -111,16 +167,14 @@ export function useLiveSTT(meetingId: string) {
         );
       }
 
-      // 1. 마이크 권한 요청
+      // 1. 장비 설정에서 선택한 마이크로 권한 요청
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+        stream = await getMicrophoneStream(selectedMicId);
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = initialMicOn;
         });
+        setMicOn(initialMicOn);
         streamRef.current = stream;
       } catch {
         if (!unmounted) {
@@ -244,7 +298,7 @@ export function useLiveSTT(meetingId: string) {
         wsRef.current.close(1000);
       }
     };
-  }, [meetingId]);
+  }, [meetingId, selectedMicId, initialMicOn]);
 
   /** 마이크 트랙 enable/disable 토글 */
   const toggleMic = useCallback(() => {
