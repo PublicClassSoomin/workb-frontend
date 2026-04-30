@@ -15,6 +15,8 @@ import {
   Play,
   Pause,
   Square,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { MEETINGS } from "../../data/mockData";
 import { readMeetingSnapshotForRoute } from "../../utils/meetingRoutes";
@@ -94,6 +96,8 @@ const ACTION_ITEMS_NOTES = [
   },
 ];
 
+const INITIAL_VISIBLE_UTTERANCES = 5;
+
 export default function NotesPage() {
   const { meetingId } = useParams();
   const navigate = useNavigate();
@@ -106,6 +110,12 @@ export default function NotesPage() {
   const [utterances, setUtterances] = useState<UtteranceItem[]>([]);
   const [utterancesLoading, setUtterancesLoading] = useState(true);
   const [utterancesError, setUtterancesError] = useState<string | null>(null);
+  const [showAllUtterances, setShowAllUtterances] = useState(false);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<
+    "top" | "bottom" | null
+  >(null);
+  const transcriptTopRef = useRef<HTMLDivElement | null>(null);
+  const transcriptBottomRef = useRef<HTMLDivElement | null>(null);
 
   // 오디오 구간 재생
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -120,6 +130,27 @@ export default function NotesPage() {
   const ASR_BASE =
     (import.meta.env.VITE_ASR_SERVER as string | undefined) ??
     "http://localhost:8888";
+  const visibleUtterances = showAllUtterances
+    ? utterances
+    : utterances.slice(0, INITIAL_VISIBLE_UTTERANCES);
+  const hiddenUtteranceCount = Math.max(
+    0,
+    utterances.length - visibleUtterances.length,
+  );
+
+  function moveTranscript(position: "top" | "bottom") {
+    if (utterances.length === 0) return;
+
+    if (
+      position === "bottom" &&
+      !showAllUtterances &&
+      utterances.length > INITIAL_VISIBLE_UTTERANCES
+    ) {
+      setShowAllUtterances(true);
+    }
+
+    setPendingScrollTarget(position);
+  }
 
   function playUtterance(u: UtteranceItem) {
     const audioUrl = `${ASR_BASE}/meeting/${meetingId}/audio`;
@@ -204,6 +235,21 @@ export default function NotesPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!pendingScrollTarget) return;
+
+    const target =
+      pendingScrollTarget === "top"
+        ? transcriptTopRef.current
+        : transcriptBottomRef.current;
+
+    target?.scrollIntoView({
+      behavior: "smooth",
+      block: pendingScrollTarget === "top" ? "start" : "end",
+    });
+    setPendingScrollTarget(null);
+  }, [pendingScrollTarget, showAllUtterances, utterances.length]);
+
   // 워크스페이스 멤버
   const [members, setMembers] = useState<WorkspaceMemberApiItem[]>([]);
   useEffect(() => {
@@ -284,6 +330,8 @@ export default function NotesPage() {
     if (!meetingId) return;
     setUtterancesLoading(true);
     setUtterancesError(null);
+    setShowAllUtterances(false);
+    setPendingScrollTarget(null);
     fetchMeetingUtterances(meetingId)
       .then((data) => setUtterances(data.utterances))
       .catch(() => setUtterancesError("발화 데이터를 불러오지 못했습니다."))
@@ -342,7 +390,7 @@ export default function NotesPage() {
   }, [meetingId]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-40 sm:pb-32">
       {/* 화자 수정 모달 */}
       {speakerModal && (
         <div
@@ -671,72 +719,13 @@ export default function NotesPage() {
 
         {/* Full transcript */}
         <section>
-          {/* 섹션 헤더 — 수정 모드 토글 */}
-          <div className="flex items-center justify-between mb-2">
+          <div ref={transcriptTopRef} />
+          <div className="mb-2">
             <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
               <MessageSquare size={15} className="text-muted-foreground" /> 전문
               타임라인
             </h2>
-            {isEditMode ? (
-              <button
-                onClick={exitEditMode}
-                disabled={utterancesLoading}
-                className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
-              >
-                {utterancesLoading ? (
-                  <Loader2 size={11} className="animate-spin" />
-                ) : (
-                  <Check size={11} />
-                )}
-                수정완료
-              </button>
-            ) : (
-              <button
-                onClick={enterEditMode}
-                disabled={utterancesLoading || utterances.length === 0}
-                className="flex items-center gap-1.5 h-7 px-3 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition-colors disabled:opacity-40"
-              >
-                <Pencil size={11} />
-                수정하기
-              </button>
-            )}
           </div>
-
-          {/* 전체 오디오 플레이어 */}
-          {!utterancesLoading && !utterancesError && utterances.length > 0 && (
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border bg-muted/20 mb-3">
-              <button
-                type="button"
-                onClick={toggleFullAudio}
-                className="w-6 h-6 rounded-full flex items-center justify-center bg-accent/10 hover:bg-accent/20 text-accent transition-colors shrink-0"
-                title={fullPlaying ? "일시정지" : "전체 재생"}
-              >
-                {fullPlaying ? (
-                  <Pause size={11} className="fill-current" />
-                ) : (
-                  <Play size={11} className="fill-current" />
-                )}
-              </button>
-              <span className="text-micro text-muted-foreground shrink-0 w-10 text-right tabular-nums">
-                {formatTime(fullCurrentTime)}
-              </span>
-              <div
-                className="flex-1 h-1.5 bg-muted rounded-full cursor-pointer relative overflow-hidden"
-                onClick={seekFullAudio}
-                title="클릭해서 이동"
-              >
-                <div
-                  className="absolute left-0 top-0 h-full bg-accent rounded-full"
-                  style={{
-                    width: `${fullDuration ? (fullCurrentTime / fullDuration) * 100 : 0}%`,
-                  }}
-                />
-              </div>
-              <span className="text-micro text-muted-foreground shrink-0 w-10 tabular-nums">
-                {fullDuration ? formatTime(fullDuration) : "--:--"}
-              </span>
-            </div>
-          )}
 
           {/* 수정 모드 안내 배너 */}
           {isEditMode && !utterancesLoading && utterances.length > 0 && (
@@ -769,7 +758,7 @@ export default function NotesPage() {
 
           {!utterancesLoading && !utterancesError && utterances.length > 0 && (
             <div className="flex flex-col gap-2.5">
-              {utterances.map((u) => {
+              {visibleUtterances.map((u) => {
                 const color = getSpeakerColor(u.speaker_label);
                 const initial = u.speaker_label.trim()[0] ?? "?";
                 const isPlaying = playingSeq === u.seq;
@@ -815,27 +804,27 @@ export default function NotesPage() {
                         <span className="text-mini text-muted-foreground">
                           {formatTime(u.start)}
                         </span>
-                        {/* 구간 재생 버튼 — 수정 모드가 아닐 때만 표시 */}
-                        {!isEditMode && (
-                          <button
-                            type="button"
-                            onClick={() => playUtterance(u)}
-                            className={[
-                              "opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 h-5 px-1.5 rounded text-micro font-medium",
-                              isPlaying
-                                ? "opacity-100 bg-accent/15 text-accent border border-accent/30"
-                                : "bg-muted/60 text-muted-foreground hover:text-foreground border border-transparent hover:border-border",
-                            ].join(" ")}
-                            title={isPlaying ? "정지" : "이 구간 재생"}
-                          >
-                            {isPlaying ? (
-                              <Square size={9} className="fill-current" />
-                            ) : (
-                              <Play size={9} className="fill-current" />
-                            )}
-                            {isPlaying ? "정지" : "재생"}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => playUtterance(u)}
+                          className={[
+                            "transition-opacity flex items-center gap-1 h-5 px-1.5 rounded text-micro font-medium",
+                            isEditMode
+                              ? "opacity-100 bg-muted/60 text-muted-foreground hover:text-foreground border border-transparent hover:border-border"
+                              : "opacity-0 group-hover:opacity-100 bg-muted/60 text-muted-foreground hover:text-foreground border border-transparent hover:border-border",
+                            isPlaying
+                              ? "opacity-100 bg-accent/15 text-accent border border-accent/30"
+                              : "",
+                          ].join(" ")}
+                          title={isPlaying ? "정지" : "이 구간 재생"}
+                        >
+                          {isPlaying ? (
+                            <Square size={9} className="fill-current" />
+                          ) : (
+                            <Play size={9} className="fill-current" />
+                          )}
+                          {isPlaying ? "정지" : "재생"}
+                        </button>
                       </div>
                       {/* 발화 텍스트 — 수정 모드일 때만 인라인 편집 */}
                       {isEditMode && editingSeq === u.seq ? (
@@ -905,6 +894,18 @@ export default function NotesPage() {
                   </div>
                 );
               })}
+              {hiddenUtteranceCount > 0 && (
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllUtterances(true)}
+                    className="h-9 px-4 rounded-lg border border-border text-sm font-medium hover:bg-muted/50 transition-colors"
+                  >
+                    더보기 {hiddenUtteranceCount}개
+                  </button>
+                </div>
+              )}
+              <div ref={transcriptBottomRef} />
             </div>
           )}
         </section>
@@ -925,6 +926,96 @@ export default function NotesPage() {
           </Link>
         </div>
       </div>
+
+      {!utterancesLoading && !utterancesError && utterances.length > 0 && (
+        <div className="fixed left-4 right-24 sm:left-1/2 sm:right-auto sm:w-[min(44rem,calc(100vw-14rem))] sm:-translate-x-1/2 bottom-4 z-20">
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
+            <div className="flex flex-1 items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={toggleFullAudio}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-accent/10 hover:bg-accent/20 text-accent transition-colors shrink-0"
+                title={fullPlaying ? "일시정지" : "전체 재생"}
+              >
+                {fullPlaying ? (
+                  <Pause size={13} className="fill-current" />
+                ) : (
+                  <Play size={13} className="fill-current" />
+                )}
+              </button>
+              <span className="text-micro text-muted-foreground shrink-0 w-10 text-right tabular-nums">
+                {formatTime(fullCurrentTime)}
+              </span>
+              <div
+                className="flex-1 h-1.5 bg-muted rounded-full cursor-pointer relative overflow-hidden"
+                onClick={seekFullAudio}
+                title="클릭해서 이동"
+              >
+                <div
+                  className="absolute left-0 top-0 h-full bg-accent rounded-full"
+                  style={{
+                    width: `${fullDuration ? (fullCurrentTime / fullDuration) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              <span className="text-micro text-muted-foreground shrink-0 w-10 tabular-nums">
+                {fullDuration ? formatTime(fullDuration) : "--:--"}
+              </span>
+            </div>
+            {isEditMode ? (
+              <button
+                onClick={exitEditMode}
+                disabled={utterancesLoading}
+                className="shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+              >
+                {utterancesLoading ? (
+                  <Loader2 size={11} className="animate-spin" />
+                ) : (
+                  <Check size={11} />
+                )}
+                수정완료
+              </button>
+            ) : (
+              <button
+                onClick={enterEditMode}
+                disabled={utterancesLoading || utterances.length === 0}
+                className="shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition-colors disabled:opacity-40"
+              >
+                <Pencil size={11} />
+                수정하기
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!utterancesLoading && !utterancesError && utterances.length > 0 && (
+        <div
+          className="fixed right-4 sm:right-6 z-30"
+          style={{
+            bottom: "max(6.75rem, calc(env(safe-area-inset-bottom) + 6rem))",
+          }}
+        >
+          <div className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
+            <button
+              type="button"
+              onClick={() => moveTranscript("top")}
+              className="flex items-center justify-center gap-1.5 h-11 px-3 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+              title="전문 상단으로 이동"
+            >
+              <ArrowUp size={13} /> 위로
+            </button>
+            <button
+              type="button"
+              onClick={() => moveTranscript("bottom")}
+              className="flex items-center justify-center gap-1.5 h-11 px-3 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors border-t border-border"
+              title="전문 하단으로 이동"
+            >
+              <ArrowDown size={13} /> 아래로
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

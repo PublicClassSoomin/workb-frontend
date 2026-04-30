@@ -1,21 +1,37 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Mic, MicOff, Camera, CameraOff, Square, Monitor, Image as ImageIcon, CheckSquare, Zap, X, CheckCircle,  AlertCircle,
-} from 'lucide-react'
+  Mic,
+  MicOff,
+  Camera,
+  CameraOff,
+  Square,
+  Monitor,
+  Image as ImageIcon,
+  CheckSquare,
+  Zap,
+  X,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
 
-import clsx from 'clsx'
-import { MEETINGS} from '../../data/mockData'
-import { endWorkspaceMeeting } from '../../api/meetings'
-import { getCurrentWorkspaceId } from '../../utils/workspace'
-import { generateQuickReport } from '../../api/chatbot'
+import clsx from "clsx";
+import { MEETINGS } from "../../data/mockData";
+import { endWorkspaceMeeting } from "../../api/meetings";
+import { getCurrentWorkspaceId } from "../../utils/workspace";
+import {
+  getMicEnabled,
+  getSelectedCameraId,
+  getSelectedMicId,
+} from "../../utils/deviceSettings";
+import { generateQuickReport } from "../../api/chatbot";
 import { useLiveSTT } from "../../hooks/useLiveSTT";
 import LiveScreenPage from "../../pages/live/LiveScreenPage";
 import LiveImagePanel from "./LiveImagePanel";
 
 // ── Panel types ───────────────────────────────────────────────────────────
-type MainPanel = 'decisions' | 'actions'
-type AuxPanel = 'screen' | 'image' | null
+type MainPanel = "decisions" | "actions";
+type AuxPanel = "screen" | "image" | null;
 
 // ── Speaker metadata ─────────────────────────────────────────────────────
 const SPEAKER_PALETTE = [
@@ -45,21 +61,6 @@ function speakerMeta(speaker: string | number): {
   };
 }
 
-// ── Device storage ────────────────────────────────────────────────────────
-const DEVICE_STORAGE_KEY = "workb-device-settings";
-
-function getSelectedCameraId(): string | null {
-  try {
-    const raw = localStorage.getItem(DEVICE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { selectedCameraId?: string };
-    const id = parsed?.selectedCameraId;
-    return typeof id === "string" && id.trim() ? id : null;
-  } catch {
-    return null;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 type PanelItem = {
   id: string;
@@ -68,10 +69,16 @@ type PanelItem = {
   text: string;
 };
 
+const AUTO_SCROLL_THRESHOLD_PX = 64;
+
 export default function LivePage() {
   const { meetingId = "2" } = useParams();
   const navigate = useNavigate();
   const meeting = MEETINGS.find((m) => m.id === meetingId) ?? MEETINGS[0];
+  const [initialMicSettings] = useState(() => ({
+    selectedMicId: getSelectedMicId(),
+    micEnabled: getMicEnabled(true),
+  }));
 
   // STT WebSocket hook
   const {
@@ -82,7 +89,10 @@ export default function LivePage() {
     micOn,
     toggleMic,
     stopMeeting,
-  } = useLiveSTT(meetingId);
+  } = useLiveSTT(meetingId, {
+    selectedMicId: initialMicSettings.selectedMicId,
+    initialMicOn: initialMicSettings.micEnabled,
+  });
 
   // Controls
   const [camOn, setCamOn] = useState(false);
@@ -91,7 +101,7 @@ export default function LivePage() {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
   // Main right panel (decisions / actions)
-  const [mainPanel, setMainPanel] = useState<MainPanel>('decisions')
+  const [mainPanel, setMainPanel] = useState<MainPanel>("decisions");
 
   // Aux panel (search / screen / speakers) — null = closed
   const [auxPanel, setAuxPanel] = useState<AuxPanel>(null);
@@ -101,9 +111,23 @@ export default function LivePage() {
   const displaySegments = diarization;
 
   // 자동 스크롤
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollBottomRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+
+  function updateAutoScrollState() {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current =
+      distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX;
+  }
+
   useEffect(() => {
-    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldAutoScrollRef.current) return;
+    scrollBottomRef.current?.scrollIntoView({ block: "end" });
   }, [displaySegments, liveText]);
 
   // 처리 완료 시 회의록 화면으로 자동 이동
@@ -418,7 +442,7 @@ export default function LivePage() {
                   );
                   void generateQuickReport(
                     getCurrentWorkspaceId(),
-                    Number(meetingId)
+                    Number(meetingId),
                   );
                   stopMeeting();
                 }}
@@ -446,11 +470,16 @@ export default function LivePage() {
         </div>
 
         {/* Mobile panel tab strip */}
-        <div role="tablist" className="lg:hidden flex border-b border-border bg-card shrink-0">
-          {([
-            { id: 'decisions', label: '결정', icon: CheckSquare },
-            { id: 'actions', label: '액션', icon: Zap },
-          ] as const).map(({ id, label, icon: Icon }) => (
+        <div
+          role="tablist"
+          className="lg:hidden flex border-b border-border bg-card shrink-0"
+        >
+          {(
+            [
+              { id: "decisions", label: "결정", icon: CheckSquare },
+              { id: "actions", label: "액션", icon: Zap },
+            ] as const
+          ).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               role="tab"
@@ -471,7 +500,11 @@ export default function LivePage() {
         </div>
 
         {/* STT Stream */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div
+          ref={scrollContainerRef}
+          onScroll={updateAutoScrollState}
+          className="flex-1 overflow-y-auto px-4 py-4"
+        >
           <div className="max-w-2xl mx-auto">
             <div className="flex items-center gap-2 mb-4">
               <Zap size={13} className="text-accent" />
@@ -671,10 +704,12 @@ export default function LivePage() {
       <aside className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 border-l border-border bg-card">
         {/* Panel tabs */}
         <div role="tablist" className="flex border-b border-border shrink-0">
-          {([
-            { id: 'decisions', label: '결정', icon: CheckSquare },
-            { id: 'actions', label: '액션', icon: Zap },
-          ] as const).map(({ id, label, icon: Icon }) => (
+          {(
+            [
+              { id: "decisions", label: "결정", icon: CheckSquare },
+              { id: "actions", label: "액션", icon: Zap },
+            ] as const
+          ).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               role="tab"

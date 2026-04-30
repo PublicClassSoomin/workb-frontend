@@ -1,26 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, Camera, Check, Mic, Monitor, RefreshCw, Save, Volume2 } from 'lucide-react'
 import { getMyDeviceSettings, updateMyDeviceSettings } from '../../api/auth'
-
-const STORAGE_KEY = 'workb-device-settings'
-
-interface StoredDeviceSettings {
-  isMainDevice: boolean
-  selectedMicId: string
-  selectedCameraId: string
-  micEnabled: boolean
-  cameraEnabled: boolean
-}
-
-function readStoredSettings(): Partial<StoredDeviceSettings> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) as Partial<StoredDeviceSettings> : {}
-  } catch {
-    localStorage.removeItem(STORAGE_KEY)
-    return {}
-  }
-}
+import {
+  DEVICE_SETTINGS_STORAGE_KEY,
+  readStoredDeviceSettings,
+  type StoredDeviceSettings,
+} from '../../utils/deviceSettings'
 
 function getDeviceLabel(device: MediaDeviceInfo, index: number, fallback: string): string {
   return device.label || `${fallback} ${index + 1}`
@@ -49,7 +34,7 @@ function ToggleSwitch({ checked, label, onChange }: ToggleSwitchProps) {
 }
 
 export default function DeviceSettingsPage() {
-  const stored = useRef(readStoredSettings())
+  const stored = useRef(readStoredDeviceSettings())
   const [isMainDevice, setIsMainDevice] = useState(stored.current.isMainDevice ?? true)
   const [selectedMicId, setSelectedMicId] = useState(stored.current.selectedMicId ?? '')
   const [selectedCameraId, setSelectedCameraId] = useState(stored.current.selectedCameraId ?? '')
@@ -151,7 +136,7 @@ export default function DeviceSettingsPage() {
       }
 
       stored.current = nextSettings
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings))
+      localStorage.setItem(DEVICE_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
       setIsMainDevice(nextSettings.isMainDevice)
       setSelectedMicId(nextSettings.selectedMicId)
       setSelectedCameraId(nextSettings.selectedCameraId)
@@ -254,7 +239,7 @@ export default function DeviceSettingsPage() {
       cameraEnabled,
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSettings))
+    localStorage.setItem(DEVICE_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
     stored.current = nextSettings
 
     setSaving(true)
