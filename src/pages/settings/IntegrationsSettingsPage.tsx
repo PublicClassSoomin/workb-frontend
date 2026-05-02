@@ -60,6 +60,7 @@ export default function IntegrationsSettingsPage() {
   const [jiraProjects, setJiraProjects] = useState<JiraProject[]>([])
   const [jiraProjectLoading, setJiraProjectLoading] = useState(false)
   const [jiraSelectedProject, setJiraSelectedProject] = useState('')
+  const [jiraProjectSearch, setJiraProjectSearch] = useState('')
   const [jiraStatuses, setJiraStatuses] = useState<string[]>([])
   const [jiraMapping, setJiraMapping] = useState<Record<string, string>>({})
   const workspaceId = getCurrentWorkspaceId()
@@ -166,6 +167,7 @@ export default function IntegrationsSettingsPage() {
     setJiraStep('project')
     setJiraProjectLoading(true)
     setJiraSelectedProject('')
+    setJiraProjectSearch('')
     try {
       const res = await getJiraProjects(workspaceId)
       setJiraProjects(res.projects)
@@ -326,26 +328,37 @@ export default function IntegrationsSettingsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-xl border border-border p-6 w-full max-w-md mx-4">
             <h2 className="text-base font-semibold text-foreground mb-1">JIRA 프로젝트 선택</h2>
-            <p className="text-mini text-muted-foreground mb-4">WBS와 연동할 JIRA 프로젝트를 선택하세요.</p>
+            <p className="text-mini text-muted-foreground mb-3">WBS와 연동할 JIRA 프로젝트를 선택하세요.</p>
+            <input
+              value={jiraProjectSearch}
+              onChange={(e) => setJiraProjectSearch(e.target.value)}
+              placeholder="프로젝트 이름 또는 키 검색"
+              className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm mb-3 focus:outline-none focus:ring-1 focus:ring-accent"
+            />
             {jiraProjectLoading ? (
               <p className="text-sm text-muted-foreground py-4 text-center">불러오는 중...</p>
             ) : jiraProjects.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">접근 가능한 프로젝트가 없습니다.</p>
             ) : (
               <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border mb-4">
-                {jiraProjects.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => handleJiraProjectSelect(p.key)}
-                    className="w-full px-3 py-2.5 text-left hover:bg-muted/40 transition-colors flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{p.name}</p>
-                      <p className="text-micro text-muted-foreground">{p.key}</p>
-                    </div>
-                    <Check size={14} className="text-accent opacity-0 group-hover:opacity-100" />
-                  </button>
-                ))}
+                {jiraProjects
+                  .filter((p) => {
+                    const q = jiraProjectSearch.toLowerCase()
+                    return !q || p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q)
+                  })
+                  .map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => handleJiraProjectSelect(p.key)}
+                      className="w-full px-3 py-2.5 text-left hover:bg-muted/40 transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{p.name}</p>
+                        <p className="text-micro text-muted-foreground">{p.key}</p>
+                      </div>
+                      <Check size={14} className="text-accent opacity-0 group-hover:opacity-100" />
+                    </button>
+                  ))}
               </div>
             )}
             <div className="flex justify-end">

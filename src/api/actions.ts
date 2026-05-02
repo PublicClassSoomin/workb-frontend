@@ -144,12 +144,18 @@ export function exportJiraSelective(
   )
 }
 
+export interface JiraExportResult {
+  created: number
+  updated: number
+  failed: string[]
+}
+
 export async function streamJiraExport(
   meetingId: string | number,
   workspaceId: number,
   body: JiraSelectiveBody = {},
   onProgress: (done: number, total: number, current: string) => void,
-  onDone: () => void,
+  onDone: (result: JiraExportResult) => void,
 ) {
   const token = getAccessToken()
   const res = await fetch(
@@ -174,12 +180,15 @@ export async function streamJiraExport(
       if (!line.startsWith('data: ')) continue
       try {
         const data = JSON.parse(line.slice(6))
-        if (data.done) { onDone(); return }
+        if (data.done) {
+          onDone({ created: data.created ?? 0, updated: data.updated ?? 0, failed: data.failed ?? [] })
+          return
+        }
         onProgress(data.done, data.total, data.current)
       } catch { /* 무시 */ }
     }
   }
-  onDone()
+  onDone({ created: 0, updated: 0, failed: [] })
 }
 
 export function syncJira(meetingId: string | number, workspaceId: number) {

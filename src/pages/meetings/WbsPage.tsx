@@ -17,7 +17,7 @@ import {
 import {
   syncJira,
   previewJira, streamJiraExport,
-  type JiraPreviewResult, type JiraPreviewEpic, type JiraSelectiveBody,
+  type JiraPreviewResult, type JiraPreviewEpic, type JiraExportResult, type JiraSelectiveBody,
 } from '../../api/actions'
 import type { WbsEpic, WbsTask, WbsStatus, WbsPriority } from '../../types/wbs'
 
@@ -652,13 +652,35 @@ export default function WbsPage() {
   async function handleConfirmExport() {
     setPreviewData(null)
     setJiraProgress({ done: 0, total: 1, current: '준비 중...' })
+    let exportResult: JiraExportResult | null = null
+
     try {
       await streamJiraExport(
         meetingId!, workspaceId, previewBody,
         (done, total, current) => setJiraProgress({ done, total, current }),
-        () => setJiraProgress(null),
+        (result) => { exportResult = result },
       )
-      showToast('JIRA 내보내기가 완료되었습니다.')
+      setJiraProgress(null)
+
+      if (exportResult && (exportResult as JiraExportResult).failed.length > 0) {
+        const r = exportResult as JiraExportResult
+        showToast(
+          `완료 — 생성 ${r.created}개, 업데이트 ${r.updated}개, 실패 ${r.failed.length}개`,
+          'error',
+        )
+      } else {
+        const r = exportResult as JiraExportResult | null
+        showToast(
+          r
+            ? `JIRA 내보내기 완료 — 생성 ${r.created}개, 업데이트 ${r.updated}개`
+            : 'JIRA 내보내기가 완료되었습니다.',
+        )
+      }
+
+      setSelectMode(false)
+      setSelectedEpics(new Set())
+      setSelectedTasks(new Set())
+
       const d = await getWbs(meetingId!, workspaceId)
       setEpics(fromApi(d.epics))
     } catch {
